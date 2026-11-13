@@ -65,7 +65,7 @@ git remote add origin https://github.com/USERNAME/fitness-app.git
 git push -u origin main
 ```
 
-GitHub ActionsはPagesの公開パス（通常はリポジトリ名）をViteに渡し、テストとビルドを実行します。Pagesへの公開は `main` へのpushに連動します。
+Viteの公開用ビルドは `/fitness-app/` を使います。開発サーバーは従来のURLで開けます。GitHub Actionsはテストとビルドを実行します。Pagesへの公開は `main` へのpushに連動します。
 
 ## 公開したPWAをiPhoneに入れる
 
@@ -107,7 +107,3 @@ JSONに個人データが含まれるため、GitHubへアップロードしな�
 使用可能重量は、種目の記録画面か「種目」タブの「使用可能重量」から編集します。
 旧店舗別重量は読み込み時に除外します。種目に登録済みの共通重量を引き継ぎます。
 種目の「設定」は登録・編集画面で入力でき、記録画面に自動表示されます。
-
-
-
-

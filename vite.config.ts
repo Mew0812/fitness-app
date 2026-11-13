@@ -2,10 +2,8 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const pagesPath = process.env.PAGES_BASE_PATH?.replace(/^\/+|\/+$/g, '')
-
-export default defineConfig({
-  base: pagesPath ? `/${pagesPath}/` : '/',
+export default defineConfig(({ command, isPreview }) => ({
+  base: command === 'serve' && !isPreview ? '/' : '/fitness-app/',
   server: { host: '0.0.0.0', port: 5173, strictPort: true },
   plugins: [react(), VitePWA({
     registerType: 'autoUpdate',
@@ -30,4 +28,4 @@ export default defineConfig({
       navigateFallback: 'index.html',
     },
   })],
-})
+}))
