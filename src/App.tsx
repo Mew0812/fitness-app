@@ -74,7 +74,7 @@ export default function App() {
   const exercises = store ? availableExercises(data,store) : []
   const selectedExercise = (editing ? data.exercises : exercises).find(x => x.id === exerciseId)
   const weights = selectedExercise?.weights ?? []
-  function chooseStore(value: StoreChoice | null) {
+  function chooseStore(value: StoreChoice) {
     if (settingsMenu.current) settingsMenu.current.open = false
     setStore(value);setTab('record');reset();setExerciseId('');setWeight('')
   }
@@ -111,11 +111,9 @@ export default function App() {
         </div>
       </details>
     </nav>
-    <p role="status" className="status">{message || (!ready ? 'データを読み込み中…' : '')}</p>
+    <p role="status" className="status">{tab === 'record' && !selectedExercise && message === '端末に保存しました。' ? '' : message}</p>
     <fieldset disabled={!ready || busy} className="workspace">
     {tab === 'record' && !selectedExercise && <section>
-      <button onClick={() => chooseStore(null)}>店舗選択に戻る</button>
-      <h2>{store === 'other' ? 'その他' : data.stores.find(x => x.id === store)?.name}の種目</h2>
       <ExerciseGrid exercises={exercises} workouts={data.workouts} select={id => {setExerciseId(id);setWeight('')}}/>
       {!exercises.length && <p>「店舗設定」で種目を登録してください。</p>}
     </section>}

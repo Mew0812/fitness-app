@@ -146,8 +146,10 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await user.click(screen.getByRole('button',{name:'店舗情報を保存'}))
  await waitFor(async () => expect((await loadData()).stores[0].note).toBe('駅から徒歩2分'))
  await user.click(screen.getByRole('button',{name:'記録する'}))
- await user.click(screen.getByRole('button',{name:'店舗選択に戻る'}))
- await user.click(screen.getByRole('button',{name:/A店.*駅から徒歩2分/}))
+ cleanup()
+ render(<App/>)
+ const renamedStore = await screen.findByRole('button',{name:/A店.*駅から徒歩2分/})
+ await user.click(renamedStore)
  await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
  expect(screen.queryByRole('button',{name:'共通設定を編集'})).toBeNull()
  const bench = await openBenchManagement(user)
@@ -159,13 +161,14 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await waitFor(async () => expect((await loadData()).exercises[0].settings).toBe('グリップ：内側'))
  await user.click(screen.getByRole('button',{name:'記録する'}))
  await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
- await user.click(screen.getByRole('button',{name:'店舗選択に戻る'}))
- for (const name of ['B店','C店',/その他/]) {
-   await user.click(screen.getByRole('button',{name}))
+ expect(screen.queryByText('端末に保存しました。')).toBeNull()
+ expect(screen.queryByRole('button',{name:'店舗選択に戻る'})).toBeNull()
+ expect(screen.queryByRole('heading',{name:'A店の種目'})).toBeNull()
+ for (const store of ['b','c','other']) {
+   await user.selectOptions(screen.getByLabelText('利用店舗'),store)
    await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
    expect(screen.getByRole('region',{name:'保存済みの設定'}).textContent).toContain('グリップ：内側')
    await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
-   await user.click(screen.getByRole('button',{name:'店舗選択に戻る'}))
  }
  const saved = await loadData()
  expect(parseBackup(JSON.parse(JSON.stringify(saved)))).toEqual(saved)
@@ -265,4 +268,3 @@ it('種目登録と編集で複数行の設定を保存し、全店舗の記録�
  }
  expect((await loadData()).workouts).toEqual(fixture().workouts)
 })
-
