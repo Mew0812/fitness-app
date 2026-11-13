@@ -16,6 +16,16 @@ afterEach(()=>{cleanup();vi.restoreAllMocks()})
 beforeEach(async()=>{await saveData(fixture());vi.spyOn(window,'confirm').mockReturnValue(true);vi.spyOn(window,'scrollTo').mockImplementation(()=>{})})
 function values(label: string) {return within(screen.getByLabelText(label)).getAllByRole('option').map(x=>(x as HTMLOptionElement).value)}
 async function launch() {render(<App/>);await waitFor(()=>expect((screen.getByRole('button',{name:'A店'}) as HTMLButtonElement).disabled).toBe(false))}
+async function openSettings(user: ReturnType<typeof userEvent.setup>, name: string) {
+ await user.click(screen.getByLabelText('設定メニュー'))
+ await user.click(screen.getByRole('button',{name}))
+}
+async function openBenchManagement(user: ReturnType<typeof userEvent.setup>) {
+ await openSettings(user,'種目の管理')
+ const row = screen.getAllByRole('article').find(x=>x.querySelector('h3')?.textContent==='ベンチプレス')!
+ await user.click(within(row).getByText('重量・共通設定'))
+ return within(row)
+}
 describe('店舗の選択と統合',()=>{
  it('店舗の種目を絞り、その他は種目・器具・重量を統合し元データを変えない',()=>{
  const d=fixture(); const original=JSON.stringify(d)
@@ -45,7 +55,7 @@ describe('店舗の選択と統合',()=>{
  cleanup();await launch();expect(screen.queryByLabelText('利用店舗')).toBeNull()
  })
  it('店舗種目の追加・設定保存・編集・削除でも履歴を維持する',async()=>{
- const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'A店'}));await u.click(screen.getByRole('button',{name:'店舗設定'}))
+ const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'A店'}));await openSettings(u,'店舗設定')
  await u.clear(screen.getByLabelText('店舗名'));await u.type(screen.getByLabelText('店舗名'),'自宅ジム');await u.click(screen.getByRole('button',{name:'店舗情報を保存'}))
  await waitFor(()=>expect(within(screen.getByLabelText('利用店舗')).getByRole('option',{name:'自宅ジム'})).toBeTruthy())
  await u.selectOptions(screen.getByLabelText('共通の種目'),'squat')
@@ -90,7 +100,7 @@ it('IndexedDBの旧形式を直接読み込み、初回保存前の原本を残�
 
 
 it('別店舗に同名種目を直接登録しても共通IDを使い、重量を店舗ごとに保存する',async()=>{
- const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'B店'}));await u.click(screen.getByRole('button',{name:'店舗設定'}))
+ const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'B店'}));await openSettings(u,'店舗設定')
  await u.selectOptions(screen.getByLabelText('設定する店舗'),'c');await u.type(screen.getByLabelText('新しい種目名'),'スクワット')
  await u.click(screen.getByRole('button',{name:'店舗に種目を登録'}));await waitFor(async()=>expect((await loadData()).storeExercises).toHaveLength(5))
  expect((await loadData()).exercises).toEqual(fixture().exercises)
@@ -131,7 +141,7 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await user.click(screen.getByRole('button',{name:'A店'}))
  expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
  expect(screen.queryByRole('button',{name:'スクワット'})).toBeNull()
- await user.click(screen.getByRole('button',{name:'店舗設定'}))
+ await openSettings(user,'店舗設定')
  await user.type(screen.getByLabelText('一言情報'),'駅から徒歩2分')
  await user.click(screen.getByRole('button',{name:'店舗情報を保存'}))
  await waitFor(async () => expect((await loadData()).stores[0].note).toBe('駅から徒歩2分'))
@@ -139,11 +149,15 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await user.click(screen.getByRole('button',{name:'店舗選択に戻る'}))
  await user.click(screen.getByRole('button',{name:/A店.*駅から徒歩2分/}))
  await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
- await user.click(screen.getByRole('button',{name:'共通設定を編集'}))
- await user.clear(screen.getByLabelText('設定',{exact:true}))
- await user.type(screen.getByLabelText('設定',{exact:true}),'グリップ：内側')
+ expect(screen.queryByRole('button',{name:'共通設定を編集'})).toBeNull()
+ const bench = await openBenchManagement(user)
+ await user.click(bench.getByRole('button',{name:'共通設定を編集'}))
+ const settingEditor = bench.getByLabelText('設定',{exact:true})
+ await user.clear(settingEditor)
+ await user.type(settingEditor,'グリップ：内側')
  await user.click(screen.getByRole('button',{name:'共通設定を保存'}))
  await waitFor(async () => expect((await loadData()).exercises[0].settings).toBe('グリップ：内側'))
+ await user.click(screen.getByRole('button',{name:'記録する'}))
  await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
  await user.click(screen.getByRole('button',{name:'店舗選択に戻る'}))
  for (const name of ['B店','C店',/その他/]) {
@@ -172,6 +186,7 @@ it('旧店舗別設定を保持し、確認して保存するまで共通設定�
  await launch()
  await user.click(screen.getByRole('button',{name:'A店'}))
  await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
+ await openBenchManagement(user)
  await user.click(screen.getByText('旧店舗別設定を確認'))
  await user.click(screen.getAllByRole('button',{name:'編集欄に追加'})[1])
  expect((await loadData()).exercises[0].settings).toBeUndefined()
@@ -186,12 +201,16 @@ it('A店で共通重量を保存するとB店・C店・その他にも反映さ�
  await launch()
  await u.click(screen.getByRole('button',{name:'A店'}))
  await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
- await u.click(screen.getByRole('button',{name:'共通重量を編集'}))
+ expect(screen.queryByRole('button',{name:'共通重量を編集'})).toBeNull()
+ const bench = await openBenchManagement(u)
+ await u.click(bench.getByRole('button',{name:'共通重量を編集'}))
  const input=screen.getByLabelText('使用可能重量 (kg)')
  await u.clear(input)
  await u.type(input,'0, 22.5, 30')
  await u.click(screen.getByRole('button',{name:'共通重量を保存'}))
- await waitFor(()=>expect(values('重量 (kg)')).toEqual(['','0','22.5','30']))
+ await waitFor(async()=>expect((await loadData()).exercises[0].weights).toEqual([0,22.5,30]))
+ await u.click(screen.getByRole('button',{name:'記録する'}))
+ expect(values('重量 (kg)')).toEqual(['','0','22.5','30'])
  for (const store of ['b','c','other']) {
    await u.selectOptions(screen.getByLabelText('利用店舗'),store)
    await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
@@ -224,7 +243,7 @@ it('種目登録と編集で複数行の設定を保存し、全店舗の記録�
  const user = userEvent.setup()
  await launch()
  await user.click(screen.getByRole('button',{name:'A店'}))
- await user.click(screen.getByRole('button',{name:'種目'}))
+ await openSettings(user,'種目の管理')
  await user.type(screen.getByLabelText('種目名'),'ラットプルダウン')
  await user.type(screen.getByLabelText('設定',{exact:true}),'座面：4\nグリップ：広め')
  await user.click(screen.getByRole('button',{name:'＋ 種目を登録'}))
