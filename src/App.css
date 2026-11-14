@@ -95,3 +95,27 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 .growth-labels { grid-column: 2; display: grid; text-align: center; font-size: 11px; }
 .growth-caption { text-align: center; }
 .growth-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; }
+
+.exercise-guide-preview {
+  display: block;
+  width: min(100%, 240px);
+  margin-top: 8px;
+  padding: 6px;
+}
+.exercise-guide-preview img, .exercise-guide-dialog img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.exercise-guide-dialog {
+  width: min(94vw, 900px);
+  max-height: 94dvh;
+  padding: 8px;
+  border: 1px solid #d8dfd8;
+  border-radius: 9px;
+}
+.exercise-guide-dialog img {
+  max-height: calc(94dvh - 72px);
+  object-fit: contain;
+}
+.exercise-guide-dialog button { margin-bottom: 4px; }

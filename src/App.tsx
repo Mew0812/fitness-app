@@ -5,6 +5,7 @@ import StoreSettings from './StoreSettings'
 import ExerciseSettings from './ExerciseSettings'
 import ExerciseProgress from './ExerciseProgress'
 import ExerciseGrid from './ExerciseGrid'
+import ExerciseGuide from './ExerciseGuide'
 import { CardioForm, CardioSummary } from './CardioForm'
 import type { Data, Workout, StoreChoice, CardioField } from './data'
 import './App.css'
@@ -169,6 +170,7 @@ export default function App() {
       <h3>{editing ? '記録を編集' : selectedExercise.name}</h3>
       <section className="workout-info" aria-label="保存済みの設定">
         <p><strong>共通設定</strong> {selectedExercise.settings || '設定は未登録です。'}</p>
+        <ExerciseGuide name={selectedExercise.name}/>
       </section>
       {showCardio ? <CardioForm key={editing || selectedExercise.id} fields={selectedExercise.cardioFields ?? []} distanceOnly={treadmill} climbOnly={isClimbmill(selectedExercise)}
         record={editedRecord && isCardio(editedRecord) ? editedRecord : undefined}
