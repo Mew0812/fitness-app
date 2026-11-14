@@ -13,7 +13,7 @@ export const cardioFields = [
 export type CardioField = typeof cardioFields[number]['key']
 export type CardioWorkout = Pick<StrengthWorkout,'id'|'exerciseId'|'date'|'trainedAt'> & {
   kind: 'cardio'
-  minutes: number
+  minutes?: number
   metrics: Partial<Record<CardioField, number>>
 }
 export type Workout = StrengthWorkout | CardioWorkout
@@ -31,6 +31,10 @@ export type Data = { version: 7; legacySettings: LegacySetting[]; exercises: Exe
 export const emptyData = (): Data => ({ version: 7, legacySettings: [], exercises: addCardioDefaults([]), workouts: [], stores: defaultStores(), storeExercises: [] })
 export const normalizeName = (name: string) => name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ja')
 // crypto.randomUUID is unavailable on iPhone when viewing a LAN HTTP URL.
+export const isTreadmill = (exercise?: Exercise) => exercise?.cardioFields !== undefined &&
+  (exercise.id === 'cardio-treadmill' || normalizeName(exercise.name) === 'トレッドミル')
+export const isBodyweight = (exercise?: Exercise) => exercise?.cardioFields === undefined &&
+  Boolean(exercise?.name.includes('（自重）'))
 export function newId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   return Array.from(bytes, n => n.toString(16).padStart(2,'0')).join('')
@@ -190,7 +194,7 @@ function parseStrengthBackup(value: unknown): Data {
 function addCardioDefaults(exercises: Exercise[]): Exercise[] {
   const result = [...exercises]
   const defaults: Exercise[] = [
-    {id:'cardio-treadmill',name:'トレッドミル',cardioFields:['distance','incline']},
+    {id:'cardio-treadmill',name:'トレッドミル',cardioFields:['distance']},
     {id:'cardio-climbmill',name:'クライムミル',cardioFields:['floors','steps']},
   ]
   for (const exercise of defaults) {
@@ -215,7 +219,7 @@ export function parseBackup(value: unknown): Data {
     const fields = data.exercises[index].cardioFields
     if (fields === undefined) return exercise
     if (!Array.isArray(fields) || fields.some(key=>!cardioFields.some(field=>field.key===key))) throw new Error('有酸素運動の入力項目が不正です。')
-    return {...exercise,cardioFields:[...new Set(fields)]}
+    return {...exercise,cardioFields:isTreadmill({...exercise,cardioFields:fields}) ? ['distance' as const] : [...new Set(fields)]}
   })
   const ids = new Set(core.workouts.map(record=>record.id))
   const strength = new Map(core.workouts.map(record=>[record.id,record]))
@@ -224,7 +228,7 @@ export function parseBackup(value: unknown): Data {
     if (!isCardio(record)) return strength.get(record.id)!
     const {id,exerciseId,date,trainedAt,minutes,metrics} = record
     if (typeof id !== 'string' || !id || ids.has(id) || !exercises.some(row=>row.id===exerciseId) ||
-        !validDate(date) || !Number.isFinite(minutes) || minutes <= 0 ||
+        !validDate(date) || (minutes === undefined ? !(Number(metrics?.distance)>0) : !Number.isFinite(minutes) || minutes <= 0) ||
         (trainedAt !== undefined && (!Number.isSafeInteger(trainedAt) || Math.abs(trainedAt)>8.64e15)) ||
         !metrics || typeof metrics !== 'object' || Array.isArray(metrics)) throw new Error('有酸素運動の記録が不正です。')
     for (const [key, metric] of Object.entries(metrics)) {
@@ -234,7 +238,7 @@ export function parseBackup(value: unknown): Data {
       }
     }
     ids.add(id)
-    return {id,exerciseId,date, ...(trainedAt === undefined ? {} : {trainedAt}), kind:'cardio' as const,minutes,metrics}
+    return {id,exerciseId,date, ...(trainedAt === undefined ? {} : {trainedAt}), kind:'cardio' as const,...(minutes === undefined ? {} : {minutes}),metrics}
   })
   return {...core,exercises,workouts}
 }
