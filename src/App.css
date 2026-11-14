@@ -77,3 +77,21 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 .store-add > button { width: 100%; }
 .cardio-fields input[type="checkbox"] { display: inline-block; width: auto; min-height: 0; margin: 8px; }
 .workout-card .cardio-numbers > label:first-child { grid-column: 1 / -1; }
+
+.growth-chart { min-width: 0; }
+.growth-layout { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 6px; }
+.growth-scale { display: flex; flex-direction: column; justify-content: space-between; padding-block: 12px; font-size: 11px; max-width: 56px; }
+.growth-plot { position: relative; min-width: 0; height: 180px; }
+.growth-plot svg { display: block; width: 100%; height: 100%; }
+.growth-axis, .growth-line { fill: none; vector-effect: non-scaling-stroke; }
+.growth-axis { stroke: #d8dfd8; }
+.growth-line { stroke: #284f3b; stroke-width: 2; }
+.growth-plot .growth-point {
+  position: absolute; transform: translate(-50%, -50%); min-height: 44px;
+  padding: 0; border: 0; background: transparent; display: grid; place-items: center;
+}
+.growth-point::after { content: ''; width: 8px; height: 8px; background: #284f3b; border-radius: 50%; }
+.growth-point[aria-pressed="true"]::after { outline: 2px solid #b39850; outline-offset: 2px; }
+.growth-labels { grid-column: 2; display: grid; text-align: center; font-size: 11px; }
+.growth-caption { text-align: center; }
+.growth-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; }
