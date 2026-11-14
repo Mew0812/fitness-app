@@ -14,7 +14,6 @@ const fixture = (): Data => ({...emptyData(),exercises:[{id:'bench',name:'ベン
 ],workouts:[{id:'old',exerciseId:'bench',date:'2020-01-01',weight:12.5,reps:8,sets:2}]})
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 beforeEach(async()=>{await saveData(fixture());vi.spyOn(window,'confirm').mockReturnValue(true);vi.spyOn(window,'scrollTo').mockImplementation(()=>{})})
-function values(label: string) {return within(screen.getByLabelText(label)).getAllByRole('option').map(x=>(x as HTMLOptionElement).value)}
 async function launch() {render(<App/>);await waitFor(()=>expect((screen.getByRole('button',{name:'A店'}) as HTMLButtonElement).disabled).toBe(false))}
 async function openSettings(user: ReturnType<typeof userEvent.setup>, name: string) {
  await user.click(screen.getByLabelText('設定メニュー'))
@@ -23,7 +22,7 @@ async function openSettings(user: ReturnType<typeof userEvent.setup>, name: stri
 async function openBenchManagement(user: ReturnType<typeof userEvent.setup>) {
  await openSettings(user,'種目の管理')
  const row = screen.getAllByRole('article').find(x=>x.querySelector('h3')?.textContent==='ベンチプレス')!
- await user.click(within(row).getByText('重量・共通設定'))
+ await user.click(within(row).getByText('共通設定',{selector:'summary'}))
  return within(row)
 }
 describe('店舗の選択と統合',()=>{
@@ -34,22 +33,22 @@ describe('店舗の選択と統合',()=>{
  expect(availableExercises(d,'other').map(x=>x.id)).toEqual(['bench','squat'])
  expect(JSON.stringify(d)).toBe(original)
  })
- it('画面で店舗別重量を切り替え、A店・B店の記録を共通IDに保存する',async()=>{
+ it('画面で店舗を切り替え、A店・B店の記録を共通IDに保存する',async()=>{
  const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'A店'}))
  await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
- expect(values('重量 (kg)')).toEqual(['','20','25','30'])
- await u.selectOptions(screen.getByLabelText('重量 (kg)'),'20');await u.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
+ await u.type(screen.getByLabelText('重量 (kg)'),'20');await u.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
  await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(2))
  await u.selectOptions(screen.getByLabelText('利用店舗'),'b')
  expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
  await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
- expect(values('重量 (kg)')).toEqual(['','20','25','30'])
- await u.selectOptions(screen.getByLabelText('重量 (kg)'),'30');await u.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
+ await u.type(screen.getByLabelText('重量 (kg)'),'30');await u.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
  await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(3))
  expect(screen.getByText(/自己ベスト/).textContent).toContain('30 kg'); expect(screen.getByText(/前回記録/).textContent).toContain('30 kg'); const d=await loadData();expect(d.workouts.map(w=>w.exerciseId)).toEqual(['bench','bench','bench']);expect(d.workouts[0]).toEqual(fixture().workouts[0])
  await u.selectOptions(screen.getByLabelText('利用店舗'),'other');await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
  expect(screen.queryByLabelText('器具')).toBeNull()
- expect(values('重量 (kg)')).toEqual(['','20','25','30'])
+ expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
  expect(screen.getByRole('region',{name:'保存済みの設定'}).textContent).toContain('座面：4')
  await u.click(screen.getByRole('button',{name:'履歴'}));expect(screen.getAllByRole('article')).toHaveLength(2)
  cleanup();await launch();expect(screen.queryByLabelText('利用店舗')).toBeNull()
@@ -99,16 +98,16 @@ it('IndexedDBの旧形式を直接読み込み、初回保存前の原本を残�
 })
 
 
-it('別店舗に同名種目を直接登録しても共通IDを使い、重量を店舗ごとに保存する',async()=>{
+it('別店舗に同名種目を直接登録しても共通IDを使い、各店舗で重量を入力できる',async()=>{
  const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'B店'}));await openSettings(u,'店舗設定')
  await u.selectOptions(screen.getByLabelText('設定する店舗'),'c');await u.type(screen.getByLabelText('新しい種目名'),'スクワット')
  await u.click(screen.getByRole('button',{name:'店舗に種目を登録'}));await waitFor(async()=>expect((await loadData()).storeExercises).toHaveLength(5))
  expect((await loadData()).exercises).toEqual(fixture().exercises)
  await u.selectOptions(screen.getByLabelText('利用店舗'),'c');await u.click(screen.getByRole('button',{name:'スクワット'}))
- expect(values('重量 (kg)')).toEqual(['','40'])
+ expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
  await u.selectOptions(screen.getByLabelText('利用店舗'),'b');await u.click(screen.getByRole('button',{name:'スクワット'}))
- expect(values('重量 (kg)')).toEqual(['','40'])
- cleanup();await launch();await u.click(screen.getByRole('button',{name:'C店'}));await u.click(screen.getByRole('button',{name:'スクワット'}));expect(values('重量 (kg)')).toEqual(['','40'])
+ expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
+ cleanup();await launch();await u.click(screen.getByRole('button',{name:'C店'}));await u.click(screen.getByRole('button',{name:'スクワット'}));expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
 })
 
 it('旧v2の複数器具を統合し履歴と原本を維持、設定付きJSONを復元できる',async()=>{
@@ -199,31 +198,33 @@ it('旧店舗別設定を保持し、確認して保存するまで共通設定�
 })
 
 
-it('A店で共通重量を保存するとB店・C店・その他にも反映される',async()=>{
- const u=userEvent.setup()
+it('候補を持たない種目でも0kg・整数・小数を保存し、空欄と負値を拒否する',async()=>{
+ const data=fixture()
+ delete data.exercises[0].weights
+ await saveData(data)
+ const user=userEvent.setup()
  await launch()
- await u.click(screen.getByRole('button',{name:'A店'}))
- await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
- expect(screen.queryByRole('button',{name:'共通重量を編集'})).toBeNull()
- const bench = await openBenchManagement(u)
- await u.click(bench.getByRole('button',{name:'共通重量を編集'}))
- const input=screen.getByLabelText('使用可能重量 (kg)')
- await u.clear(input)
- await u.type(input,'0, 22.5, 30')
- await u.click(screen.getByRole('button',{name:'共通重量を保存'}))
- await waitFor(async()=>expect((await loadData()).exercises[0].weights).toEqual([0,22.5,30]))
- await u.click(screen.getByRole('button',{name:'記録する'}))
- expect(values('重量 (kg)')).toEqual(['','0','22.5','30'])
- for (const store of ['b','c','other']) {
-   await u.selectOptions(screen.getByLabelText('利用店舗'),store)
-   await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
-   expect(values('重量 (kg)')).toEqual(['','0','22.5','30'])
+ await user.click(screen.getByRole('button',{name:'A店'}))
+ await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
+ const weight=screen.getByRole('spinbutton',{name:'重量 (kg)'})
+ const save=screen.getByRole('button',{name:'＋ 記録を保存'})
+ await user.click(save)
+ await user.type(weight,'-1')
+ await user.click(save)
+ expect((await loadData()).workouts).toEqual(data.workouts)
+ for(const [index, value] of ['0','17','32.5','37.5'].entries()){
+   await user.clear(weight)
+   await user.type(weight,value)
+   await user.click(save)
+   await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(index+2))
  }
- const data=await loadData()
- expect(data.workouts).toEqual(fixture().workouts)
- expect(parseBackup(JSON.parse(JSON.stringify(data)))).toEqual(data)
+ const saved=await loadData()
+ expect(saved.workouts.map(record=>record.weight)).toEqual([12.5,0,17,32.5,37.5])
+ expect(saved.exercises).toEqual(data.exercises)
+ const row=await openBenchManagement(user)
+ expect(row.queryByRole('button',{name:'共通重量を編集'})).toBeNull()
+ expect(row.getByRole('button',{name:'共通設定を編集'})).toBeTruthy()
 })
-
 
 it('旧店舗別重量を除外し、共通重量・設定・店舗・日時付き履歴を引き継ぐ', async () => {
  const data = fixture()
@@ -264,7 +265,7 @@ it('種目登録と編集で複数行の設定を保存し、全店舗の記録�
    await user.selectOptions(screen.getByLabelText('利用店舗'),store)
    await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
    expect(screen.getByRole('region',{name:'保存済みの設定'}).textContent).toContain('座面：6\n背もたれ：2')
-   expect(values('重量 (kg)')).toEqual(['','20','25','30'])
+   expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
  }
  expect((await loadData()).workouts).toEqual(fixture().workouts)
 })
