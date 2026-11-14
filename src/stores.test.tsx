@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { availableExercises, emptyData, loadData, parseBackup, saveData } from './data'
+import { availableExercises, emptyData, loadData, parseBackup, saveData, isCardio } from './data'
 import type { Data } from './data'
 const fixture = (): Data => ({...emptyData(),exercises:[{id:'bench',name:'ベンチプレス',settings:'座面：4',weights:[20,25,30]},{id:'squat',name:'スクワット',weights:[40]}],storeExercises:[
  {storeId:'a',exerciseId:'bench'},
@@ -67,13 +67,13 @@ describe('店舗の選択と統合',()=>{
  const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'C店'}));await u.click(screen.getByRole('button',{name:'履歴'}))
  await u.click(screen.getByRole('button',{name:'2020-01-01'}));await u.click(screen.getByRole('button',{name:'編集'}));expect((screen.getByLabelText('重量 (kg)') as HTMLInputElement).value).toBe('12.5')
  await u.clear(screen.getByLabelText('回数'));await u.type(screen.getByLabelText('回数'),'9');await u.click(screen.getByRole('button',{name:'変更を保存'}))
- await waitFor(async()=>expect((await loadData()).workouts[0].reps).toBe(9));expect((await loadData()).workouts[0].id).toBe('old')
+ await waitFor(async()=>expect((await loadData()).workouts.filter(record=>"weight" in record)[0].reps).toBe(9));expect((await loadData()).workouts[0].id).toBe('old')
  })
 })
 describe('旧データの移行とJSON互換性',()=>{
  it('旧バージョンを移行してもID・履歴を変えず、新形式で設定ごと復元する',async()=>{
  const d=fixture();const legacy={version:1,exercises:d.exercises.map(({id,name})=>({id,name})),workouts:d.workouts}
- const migrated=parseBackup(legacy);expect(migrated.exercises).toEqual(legacy.exercises);expect(migrated.workouts).toEqual(d.workouts);expect(migrated.storeExercises).toEqual([])
+ const migrated=parseBackup(legacy);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises));expect(migrated.workouts).toEqual(d.workouts);expect(migrated.storeExercises).toEqual([])
  await saveData(migrated);expect(await loadData()).toEqual(migrated)
  const restored=parseBackup(JSON.parse(JSON.stringify(d)));await saveData(restored);expect(await loadData()).toEqual(d)
  })
@@ -91,7 +91,7 @@ it('IndexedDBの旧形式を直接読み込み、初回保存前の原本を残�
  const d=fixture();const legacy={version:1,exercises:d.exercises.map(({id,name})=>({id,name})),workouts:d.workouts}
  const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('myfitness',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})
  await new Promise<void>((resolve,reject)=>{const t=db.transaction('data','readwrite');t.objectStore('data').put(legacy,'main');t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error)})
- const migrated=await loadData();expect(migrated.version).toBe(6);expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(legacy.exercises)
+ const migrated=await loadData();expect(migrated.version).toBe(7);expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises))
  await saveData({...migrated,stores:migrated.stores.map(s=>s.id==='a'?{...s,name:'移行後A店'}:s)})
  const original=await new Promise((resolve,reject)=>{const t=db.transaction('data','readonly');const r=t.objectStore('data').get('before-v2-migration');t.oncomplete=()=>resolve(r.result);t.onerror=()=>reject(t.error)})
  expect(original).toEqual(legacy);expect((await loadData()).workouts).toEqual(legacy.workouts);db.close()
@@ -118,7 +118,7 @@ it('旧v2の複数器具を統合し履歴と原本を維持、設定付きJSON�
  ]}
  const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('myfitness',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})
  await new Promise<void>((resolve,reject)=>{const t=db.transaction('data','readwrite');t.objectStore('data').put(legacy,'main');t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error)})
- const migrated=await loadData();expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(legacy.exercises);expect(migrated.storeExercises).toHaveLength(2)
+ const migrated=await loadData();expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises));expect(migrated.storeExercises).toHaveLength(2)
  expect(migrated.storeExercises[0]).toEqual({storeId:'a',exerciseId:'bench'})
  expect(migrated.exercises[0].weights).toBeUndefined()
  await saveData(migrated)
@@ -241,8 +241,8 @@ it('候補を持たない種目でも0kg・整数・小数を保存し、空欄�
    await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(index+2))
  }
  const saved=await loadData()
- expect(saved.workouts.map(record=>record.weight)).toEqual([12.5,0,17,32.5,37.5])
- expect(saved.workouts.slice(1).every(record=>record.reps===10 && record.sets===1)).toBe(true)
+ expect(saved.workouts.filter(record=>"weight" in record).map(record=>record.weight)).toEqual([12.5,0,17,32.5,37.5])
+ expect(saved.workouts.slice(1).every(record=>!isCardio(record) && record.reps===10 && record.sets===1)).toBe(true)
  expect(saved.exercises).toEqual(data.exercises)
  const row=await openBenchManagement(user)
  expect(row.queryByRole('button',{name:'共通重量を編集'})).toBeNull()
@@ -259,11 +259,11 @@ it('旧店舗別重量を除外し、共通重量・設定・店舗・日時付�
  expect(fromV4.exercises.every(exercise => exercise.weights === undefined)).toBe(true)
  expect(fromV4.storeExercises).toEqual(data.storeExercises)
  const migrated = parseBackup({...data, version:5, legacyWeights:oldRows})
- expect(migrated).toEqual(data)
+ expect(migrated).toEqual({...data,exercises:expect.arrayContaining(data.exercises)})
  expect(migrated).not.toHaveProperty('legacyWeights')
  await saveData(migrated)
- expect(await loadData()).toEqual(data)
- expect(parseBackup(JSON.parse(JSON.stringify(await loadData())))).toEqual(data)
+ expect(await loadData()).toEqual(migrated)
+ expect(parseBackup(JSON.parse(JSON.stringify(await loadData())))).toEqual(migrated)
 })
 
 it('種目登録と編集で複数行の設定を保存し、全店舗の記録画面に表示する', async () => {
@@ -291,4 +291,75 @@ it('種目登録と編集で複数行の設定を保存し、全店舗の記録�
    expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
  }
  expect((await loadData()).workouts).toEqual(fixture().workouts)
+})
+
+it('追加店舗の編集・割り当て・削除と、有酸素運動の共通履歴を維持する', async () => {
+ const data=fixture()
+ data.exercises.push(...emptyData().exercises)
+ await saveData(data)
+ const user=userEvent.setup()
+ await launch()
+ await user.click(screen.getByRole('button',{name:'＋ 新しい店舗を追加'}))
+ await user.type(screen.getByLabelText('店舗名'),'Ａ店')
+ await user.click(screen.getByRole('button',{name:'店舗を追加'}))
+ expect(screen.getByText('同じ名前の店舗は登録できません。')).toBeTruthy()
+ await user.clear(screen.getByLabelText('店舗名'))
+ await user.type(screen.getByLabelText('店舗名'),'新店舗')
+ await user.type(screen.getByLabelText('説明文'),'駅前')
+ await user.click(screen.getByRole('button',{name:'店舗を追加'}))
+ await user.click(await screen.findByRole('button',{name:/新店舗.*駅前/}))
+ const id=(await loadData()).stores[3].id
+ await openSettings(user,'店舗設定')
+ await user.selectOptions(screen.getByLabelText('設定する店舗'),id)
+ await user.clear(screen.getByLabelText('店舗名'))
+ await user.type(screen.getByLabelText('店舗名'),'駅前店')
+ await user.click(screen.getByRole('button',{name:'店舗情報を保存'}))
+ await waitFor(async()=>expect((await loadData()).stores[3].name).toBe('駅前店'))
+ for(const exercise of ['cardio-treadmill','cardio-climbmill']){
+   await user.selectOptions(screen.getByLabelText('共通の種目'),exercise)
+   await user.click(screen.getByRole('button',{name:'店舗に種目を登録'}))
+   await waitFor(async()=>expect((await loadData()).storeExercises).toContainEqual({storeId:id,exerciseId:exercise}))
+ }
+ await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.selectOptions(screen.getByLabelText('利用店舗'),'other')
+ await user.click(screen.getByRole('button',{name:'トレッドミル'}))
+ expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
+ await user.type(screen.getByLabelText('運動時間 (分)'),'30.5')
+ await user.type(screen.getByLabelText('走行距離 (km)'),'4.5')
+ await user.type(screen.getByLabelText('傾斜 (%)'),'3')
+ await user.dblClick(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(2))
+ expect((screen.getByLabelText('運動時間 (分)') as HTMLInputElement).value).toBe('')
+ await user.selectOptions(screen.getByLabelText('利用店舗'),id)
+ await user.click(screen.getByRole('button',{name:'クライムミル'}))
+ await user.type(screen.getByLabelText('運動時間 (分)'),'20')
+ await user.type(screen.getByLabelText('登った階数'),'50')
+ await user.type(screen.getByLabelText('ステップ数'),'1200')
+ await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(3))
+ await user.type(screen.getByLabelText('運動時間 (分)'),'10')
+ await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(4))
+ await user.selectOptions(screen.getByLabelText('利用店舗'),'a')
+ await user.click(screen.getByRole('button',{name:'履歴'}))
+ expect(screen.getByText('30.5分 · 4.5km · 傾斜3％')).toBeTruthy()
+ expect(screen.getByText('20分 · 50階 · 1,200ステップ')).toBeTruthy()
+ const saved=await loadData()
+ expect(saved.workouts.filter(isCardio).at(-1)?.metrics).toEqual({})
+ expect(parseBackup(JSON.parse(JSON.stringify(saved)))).toEqual(saved)
+ await openSettings(user,'店舗設定')
+ await user.selectOptions(screen.getByLabelText('設定する店舗'),id)
+ await user.click(screen.getByRole('button',{name:'店舗を削除'}))
+ await waitFor(async()=>expect((await loadData()).stores).toHaveLength(3))
+ expect((await loadData()).workouts).toEqual(saved.workouts)
+ expect((await loadData()).storeExercises.some(row=>row.storeId===id)).toBe(false)
+}, 15000)
+
+it('旧バックアップと同名の有酸素種目を重複作成しない',()=>{
+ const data=fixture()
+ data.exercises.push({id:'old-treadmill',name:'トレッドミル',settings:'旧設定'})
+ const restored=parseBackup({...data,version:6})
+ expect(restored.exercises.filter(row=>row.name==='トレッドミル')).toEqual([{id:'old-treadmill',name:'トレッドミル',settings:'旧設定'}])
+ expect(restored.exercises.some(row=>row.name==='クライムミル' && row.cardioFields?.includes('floors'))).toBe(true)
+ expect(restored.workouts).toEqual(data.workouts)
 })

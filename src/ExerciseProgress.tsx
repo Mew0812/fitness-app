@@ -1,4 +1,6 @@
-import type { Workout } from './data'
+import { isCardio } from './data'
+import { CardioSummary } from './CardioForm'
+import type { Workout, StrengthWorkout } from './data'
 
 export default function ExerciseProgress({exerciseId, workouts}: {exerciseId: string; workouts: Workout[]}) {
   const records = workouts.filter(record => record.exerciseId === exerciseId)
@@ -6,8 +8,14 @@ export default function ExerciseProgress({exerciseId, workouts}: {exerciseId: st
     !last || record.date >= last.date ? record : last, undefined)
   if (!latest) return null
 
+  if (isCardio(latest)) return <section className="card" aria-label="全店舗共通の記録">
+    <h3>全店舗共通の記録</h3>
+    <p>前回記録 {latest.date}</p>
+    <CardioSummary record={latest}/>
+  </section>
+
   const daily = new Map<string, number>()
-  for (const record of records) {
+  for (const record of records.filter((row): row is StrengthWorkout => !isCardio(row))) {
     daily.set(record.date, Math.max(daily.get(record.date) ?? 0, record.weight))
   }
   const days = [...daily].sort(([a], [b]) => a.localeCompare(b))

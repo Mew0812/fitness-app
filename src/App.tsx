@@ -1,17 +1,23 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { emptyData, loadData, parseBackup, saveData, availableExercises, normalizeName, newId } from './data'
+import { emptyData, loadData, parseBackup, saveData, availableExercises, normalizeName, newId, cardioFields, isCardio } from './data'
 import StoreSettings from './StoreSettings'
 import ExerciseSettings from './ExerciseSettings'
 import ExerciseProgress from './ExerciseProgress'
 import ExerciseGrid from './ExerciseGrid'
-import type { Data, Workout, StoreChoice } from './data'
+import { CardioForm, CardioSummary } from './CardioForm'
+import type { Data, Workout, StoreChoice, CardioField } from './data'
 import './App.css'
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 const currentTime = () => Date.now()
 export default function App() {
   const [data, setData] = useState<Data>(emptyData)
   const [store, setStore] = useState<StoreChoice | null>(null)
+  const [addingStore, setAddingStore] = useState(false)
+  const [newStoreName, setNewStoreName] = useState('')
+  const [newStoreNote, setNewStoreNote] = useState('')
+  const [exerciseFields, setExerciseFields] = useState<CardioField[] | undefined>()
+  const saving = useRef(false)
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
@@ -29,10 +35,12 @@ export default function App() {
   const file = useRef<HTMLInputElement>(null)
   useEffect(() => { loadData().then(d => {setData(d); setReady(true)}).catch(() => setMessage('データを読み込めません。Safariの通常モードで再読み込みしてください。')) }, [])
   async function commit(next: Data) {
+    if (saving.current) return false
+    saving.current = true
     setBusy(true)
     try { await saveData(next); setData(next); setMessage('端末に保存しました。'); return true }
     catch { setMessage('保存できませんでした。空き容量とブラウザの設定をご確認ください。'); return false }
-    finally { setBusy(false) }
+    finally { saving.current = false; setBusy(false) }
   }
   function reset() { setEditing(''); setWeight(''); setReps(''); setSets(0) }
   async function submit(e: FormEvent) {
@@ -45,10 +53,15 @@ export default function App() {
     const previous = data.workouts.find(workout => workout.id === editing)
     const trainedAt = previous?.date === date ? previous.trainedAt : date === today() ? currentTime() : undefined
     const record: Workout = { id: editing || newId(), exerciseId, date, trainedAt, weight: enteredWeight, reps: Number(reps), sets }
+    await saveWorkout(record)
+  }
+  async function saveWorkout(record: Workout) {
     const workouts = editing ? data.workouts.map(w => w.id === editing ? record : w) : [...data.workouts, record]
     const next = {...data, workouts}
-    try { parseBackup(next) } catch { setMessage('種目・日付・数値を確認してください。'); return }
-    if (await commit(next)) reset()
+    try { parseBackup(next) } catch { setMessage('種目・日付・数値を確認してください。'); return false }
+    if (!(await commit(next))) return false
+    reset()
+    return true
   }
   async function submitExercise(e: FormEvent) {
     e.preventDefault()
@@ -56,7 +69,7 @@ export default function App() {
     if (!trimmed) return
     if (data.exercises.some(x => normalizeName(x.name) === normalizeName(trimmed) && x.id !== editExercise)) {setMessage('同じ名前の種目が登録されています。'); return}
     const id = editExercise || newId()
-    if (await commit({...data, exercises: editExercise ? data.exercises.map(x => x.id === id ? {...x,name:trimmed,settings:exerciseSettings} : x) : [...data.exercises,{id,name:trimmed,settings:exerciseSettings}]})) {setName('');setExerciseSettings('');setEditExercise('')}
+    if (await commit({...data, exercises: editExercise ? data.exercises.map(x => x.id === id ? {...x,name:trimmed,settings:exerciseSettings,cardioFields:exerciseFields} : x) : [...data.exercises,{id,name:trimmed,settings:exerciseSettings,cardioFields:exerciseFields}]})) {setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}
   }
   async function restore(f?: File) {
     if (!f) return
@@ -64,7 +77,7 @@ export default function App() {
       if (f.size > 10 * 1024 * 1024) throw new Error('10MB以下のJSONを選んでください。')
       const next = parseBackup(JSON.parse(await f.text()))
       if (window.confirm(`種目 ${next.exercises.length} 件、記録 ${next.workouts.length} 件と店舗・種目設定を復元します。現在のデータは置き換わります。先にバックアップを保存しましたか？`)) {
-        if (await commit(next)) {reset();setExerciseId('');setName('');setExerciseSettings('');setEditExercise('')}
+        if (await commit(next)) {reset();setExerciseId('');setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}
       }
     } catch (e) {setMessage(e instanceof Error ? e.message : '復元できませんでした。')}
     finally {if(file.current) file.current.value = ''}
@@ -80,9 +93,32 @@ export default function App() {
     if (settingsMenu.current) settingsMenu.current.open = false
     setStore(value);setTab('record');reset();setExerciseId('');setWeight('')
   }
+  const editedRecord = data.workouts.find(record=>record.id===editing)
+  const showCardio = editedRecord ? isCardio(editedRecord) : selectedExercise?.cardioFields !== undefined
   const daily = data.workouts.filter(w => w.date === date)
   const dates = [...new Set(data.workouts.map(w => w.date))].sort().reverse()
-  if (!store) return <div className="app"><main>{(message || !ready) && <p role="status" className="status">{message || 'データを読み込み中…'}</p>}<fieldset className="workspace store-grid" disabled={!ready || busy}>{data.stores.map(s=><button key={s.id} onClick={()=>chooseStore(s.id)}>{s.name}{s.note && <span>{s.note}</span>}</button>)}<button onClick={()=>chooseStore('other')}>その他<span>3店舗のすべての種目</span></button></fieldset></main></div>
+  if (!store) return <div className="app"><main>{(message || !ready) && <p role="status" className="status">{message || 'データを読み込み中…'}</p>}<fieldset className="workspace store-grid" disabled={!ready || busy}>{data.stores.map(s=><button key={s.id} onClick={()=>chooseStore(s.id)}>{s.name}{s.note && <span>{s.note}</span>}</button>)}<button onClick={()=>chooseStore('other')}>その他<span>全店舗の種目</span></button></fieldset>
+    <div className="store-add">
+      {addingStore ? <form className="card" onSubmit={async event=>{
+        event.preventDefault()
+        const name = newStoreName.trim()
+        if (!name) return
+        if (normalizeName(name)==='その他' || data.stores.some(row=>normalizeName(row.name)===normalizeName(name))) {
+          setMessage('同じ名前の店舗は登録できません。')
+          return
+        }
+        if (await commit({...data,stores:[...data.stores,{id:newId(),name,note:newStoreNote}]})) {
+          setAddingStore(false)
+          setNewStoreName('')
+          setNewStoreNote('')
+        }
+      }}>
+        <label>店舗名<input required maxLength={80} value={newStoreName} onChange={e=>setNewStoreName(e.target.value)}/></label>
+        <label>説明文<textarea rows={2} value={newStoreNote} onChange={e=>setNewStoreNote(e.target.value)}/></label>
+        <button className="primary" disabled={busy || !newStoreName.trim()}>店舗を追加</button>
+        <button type="button" onClick={()=>setAddingStore(false)}>キャンセル</button>
+      </form> : <button disabled={!ready || busy} onClick={()=>setAddingStore(true)}>＋ 新しい店舗を追加</button>}
+    </div></main></div>
   return <div className="app">
     <main>
     <label className="store-switch">利用店舗<select aria-label="利用店舗" value={store} disabled={busy} onChange={e=>{if(!editing || confirm('店舗を切り替えると編集中の入力は破棄されます。切り替えますか？')) chooseStore(e.target.value as StoreChoice)}}>{data.stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="other">その他（全店舗の種目）</option></select></label>
@@ -123,13 +159,18 @@ export default function App() {
     {tab==='history' && <div className="date-list">{dates.map(d=><button key={d} onClick={()=>{setDate(d);reset()}} className={date===d?'selected':''}>{d}</button>)}</div>}
     {tab==='record' && selectedExercise && <>
       <button onClick={() => { reset(); setExerciseId('') }}>種目選択に戻る</button>
-      <form className="card workout-card" onSubmit={submit}>
+      <div className="card workout-card">
       <h3>{editing ? '記録を編集' : selectedExercise.name}</h3>
       <section className="workout-info" aria-label="保存済みの設定">
         <p><strong>共通設定</strong> {selectedExercise.settings || '設定は未登録です。'}</p>
       </section>
+      {showCardio ? <CardioForm key={editing || selectedExercise.id} fields={selectedExercise.cardioFields ?? []}
+        record={editedRecord && isCardio(editedRecord) ? editedRecord : undefined}
+        save={(minutes,metrics)=>saveWorkout({kind:'cardio',id:editing || newId(),exerciseId,date,
+          trainedAt:editedRecord?.date===date ? editedRecord.trainedAt : date===today() ? currentTime() : undefined,minutes,metrics})}
+        cancel={reset}/> : <form onSubmit={submit}>
       {editing && <label>種目<select required value={exerciseId} onChange={e=>setExerciseId(e.target.value)}>
-        {data.exercises.map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+        {data.exercises.filter(x=>x.cardioFields===undefined || x.id===exerciseId).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
       </select></label>}{editing && <p className="hint">過去の記録は現在の種目設定に関係なく編集できます。重量を直接入力してください。</p>}<div className="numbers"><label>重量 (kg)<input type="number" inputMode="decimal" min="0" max="2000" step="any" required value={weight} onChange={e=>setWeight(e.target.value)}/></label><label>回数<input type="number" inputMode="numeric" min="1" max="10000" required value={reps} onChange={e=>setReps(e.target.value)}/></label><div className="set-counter" role="group" aria-label="セット数">
         <span>セット数</span>
         <div className="set-counter-controls">
@@ -137,12 +178,21 @@ export default function App() {
           <output aria-label="現在のセット数">{sets || '—'}</output>
           <button type="button" aria-label="セット数を増やす" disabled={sets === 1000} onClick={() => setSets(n => Math.min(1000, n + 1))}>＋</button>
         </div>
-      </div></div><p className="hint">自重トレーニングは 0 kg で記録できます。</p><button className="primary" disabled={!weight.trim() || !reps.trim() || sets === 0}>{busy?'保存中…':editing?'変更を保存':'＋ 記録を保存'}</button>{editing && <button type="button" onClick={reset}>編集をキャンセル</button>}</form>
+      </div></div><p className="hint">自重トレーニングは 0 kg で記録できます。</p><button className="primary" disabled={!weight.trim() || !reps.trim() || sets === 0}>{busy?'保存中…':editing?'変更を保存':'＋ 記録を保存'}</button>{editing && <button type="button" onClick={reset}>編集をキャンセル</button>}</form>}
+      </div>
       <ExerciseProgress exerciseId={selectedExercise.id} workouts={data.workouts}/>
     </>}
-    <section className="entries"><h3>{date.replaceAll('-',' / ')} <span>{daily.length} 件</span></h3>{daily.length===0?<div className="empty"><div>＋</div><h3>この日の記録はまだありません</h3><p>あなたのペースで、最初の1セットから。</p></div>:daily.map(w=><article className="entry" key={w.id}><div><h3>{data.exercises.find(x=>x.id===w.exerciseId)?.name}</h3><p><strong>{w.weight}</strong> kg <span>×</span> <strong>{w.reps}</strong> 回 <span>×</span> <strong>{w.sets}</strong> セット</p></div><div className="actions"><button onClick={()=>{setEditing(w.id);setExerciseId(w.exerciseId);setWeight(String(w.weight));setReps(String(w.reps));setSets(w.sets);setTab('record');window.scrollTo({top:0,behavior:'smooth'})}}>編集</button><button className="danger" onClick={async()=>{if(confirm('この記録を削除しますか？')) if(await commit({...data,workouts:data.workouts.filter(x=>x.id!==w.id)})) reset()}}>削除</button></div></article>)}</section></>}
-    {tab==='exercises' && <><p className="eyebrow">EXERCISE LIBRARY</p><h2>共通の種目を管理</h2><p className="hint">同じ種目はここで1度だけ登録し、各店舗に登録してください。種目名の変更は全店舗と履歴に反映されます。</p><form className="card" onSubmit={submitExercise}><label>種目名<input required maxLength={80} placeholder="例：ベンチプレス" value={name} onChange={e=>setName(e.target.value)}/></label><label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label><button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{x.name}</h3><details className="exercise-management"><summary>共通設定</summary><ExerciseSettings exercise={x} data={data} commit={commit}/></details><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setEditExercise(x.id)}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count || data.legacySettings.some(e=>e.exerciseId===x.id)){setMessage('記録または旧設定がある種目は削除できません。店舗からの登録解除は「店舗設定」で行えます。');return}if(confirm(`「${x.name}」を削除しますか？関連する記録 ${count} 件と全店舗の種目設定も削除されます。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),workouts:data.workouts.filter(w=>w.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
-    {tab==='stores' && <StoreSettings data={data} commit={commit}/>}
+    <section className="entries"><h3>{date.replaceAll('-',' / ')} <span>{daily.length} 件</span></h3>{daily.length===0?<div className="empty"><div>＋</div><h3>この日の記録はまだありません</h3><p>あなたのペースで、最初の1セットから。</p></div>:daily.map(w=><article className="entry" key={w.id}><div><h3>{data.exercises.find(x=>x.id===w.exerciseId)?.name}</h3>{isCardio(w) ? <CardioSummary record={w}/> : <p><strong>{w.weight}</strong> kg <span>×</span> <strong>{w.reps}</strong> 回 <span>×</span> <strong>{w.sets}</strong> セット</p>}</div><div className="actions"><button onClick={()=>{setEditing(w.id);setExerciseId(w.exerciseId);if(!isCardio(w)){setWeight(String(w.weight));setReps(String(w.reps));setSets(w.sets)}setTab('record');window.scrollTo({top:0,behavior:'smooth'})}}>編集</button><button className="danger" onClick={async()=>{if(confirm('この記録を削除しますか？')) if(await commit({...data,workouts:data.workouts.filter(x=>x.id!==w.id)})) reset()}}>削除</button></div></article>)}</section></>}
+    {tab==='exercises' && <><p className="eyebrow">EXERCISE LIBRARY</p><h2>共通の種目を管理</h2><p className="hint">同じ種目はここで1度だけ登録し、各店舗に登録してください。種目名の変更は全店舗と履歴に反映されます。</p><form className="card" onSubmit={submitExercise}><label>種目名<input required maxLength={80} placeholder="例：ベンチプレス" value={name} onChange={e=>setName(e.target.value)}/></label><label>種目の種類<select value={exerciseFields === undefined ? 'strength' : 'cardio'}
+      onChange={e=>setExerciseFields(e.target.value==='cardio' ? [] : undefined)}>
+      <option value="strength">筋トレ</option><option value="cardio">有酸素運動</option>
+    </select></label>
+    {exerciseFields !== undefined && <fieldset className="workspace cardio-fields"><legend>任意の記録項目</legend>
+      {cardioFields.map(field=><label key={field.key}><input type="checkbox" checked={exerciseFields.includes(field.key)}
+        onChange={e=>setExerciseFields(e.target.checked ? [...exerciseFields,field.key] : exerciseFields.filter(key=>key!==field.key))}/>{field.label}</label>)}
+    </fieldset>}
+    <label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label><button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{x.name}</h3><details className="exercise-management"><summary>共通設定</summary><ExerciseSettings exercise={x} data={data} commit={commit}/></details><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setExerciseFields(x.cardioFields);setEditExercise(x.id)}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count || data.legacySettings.some(e=>e.exerciseId===x.id)){setMessage('記録または旧設定がある種目は削除できません。店舗からの登録解除は「店舗設定」で行えます。');return}if(confirm(`「${x.name}」を削除しますか？関連する記録 ${count} 件と全店舗の種目設定も削除されます。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),workouts:data.workouts.filter(w=>w.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
+    {tab==='stores' && <StoreSettings data={data} commit={commit} onDelete={id=>{if(store===id){setStore(null);reset();setExerciseId('')}}}/>}
     {tab==='backup' && <><p className="eyebrow">KEEP YOUR PROGRESS</p><h2>バックアップと復元</h2><div className="card"><h3>大切な記録を、手元に。</h3><p>データはこのブラウザの端末内に保存されます。別端末とは同期しません。ブラウザのデータ削除や端末の変更に備え、定期的にJSONを保存してください。</p><button className="primary" onClick={backup}>JSONバックアップを保存</button><hr/><h3>バックアップから復元</h3><p>このアプリで保存したJSONを選択します。内容を確認後、現在の全データを置き換えます。</p><input ref={file} aria-label="復元するJSONファイル" type="file" accept=".json,application/json" onChange={e=>void restore(e.target.files?.[0])}/></div></>}
     </fieldset><footer>自分と向き合う時間を、少しずつ。<br/><span>MY FITNESS · 食事・体重・グラフは今後追加予定</span></footer></main></div>
 }

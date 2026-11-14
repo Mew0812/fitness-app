@@ -1,18 +1,34 @@
-export type StoreId = 'a' | 'b' | 'c'
-export type StoreChoice = StoreId | 'other'
+export type StoreId = string
+export type StoreChoice = StoreId
 export type Store = { id: StoreId; name: string; note?: string }
 export type Equipment = { id: string; storeId: StoreId; exerciseId: string; name: string; weights: number[] }
-export type Exercise = { id: string; name: string; settings?: string; weights?: number[] }
-export type Workout = { id: string; exerciseId: string; date: string; weight: number; reps: number; sets: number; trainedAt?: number }
-type LegacyData = { version: 2; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; equipment: Equipment[] }
+export type Exercise = { id: string; name: string; settings?: string; weights?: number[]; cardioFields?: CardioField[] }
+export type StrengthWorkout = { id: string; exerciseId: string; date: string; weight: number; reps: number; sets: number; trainedAt?: number }
+export const cardioFields = [
+  {key:'distance', label:'走行距離 (km)', unit:'km', integer:false},
+  {key:'incline', label:'傾斜 (%)', unit:'％', integer:false},
+  {key:'floors', label:'登った階数', unit:'階', integer:true},
+  {key:'steps', label:'ステップ数', unit:'ステップ', integer:true},
+] as const
+export type CardioField = typeof cardioFields[number]['key']
+export type CardioWorkout = Pick<StrengthWorkout,'id'|'exerciseId'|'date'|'trainedAt'> & {
+  kind: 'cardio'
+  minutes: number
+  metrics: Partial<Record<CardioField, number>>
+}
+export type Workout = StrengthWorkout | CardioWorkout
+export function isCardio(record: Workout): record is CardioWorkout {
+  return 'kind' in record && record.kind === 'cardio'
+}
+type LegacyData = { version: 2; exercises: Exercise[]; workouts: StrengthWorkout[]; stores: Store[]; equipment: Equipment[] }
 export const defaultStores = (): Store[] => [{id:'a',name:'A店'},{id:'b',name:'B店'},{id:'c',name:'C店'}]
 export type StoreExercise = { storeId: StoreId; exerciseId: string }
 type LegacyWeight = StoreExercise & { weights: number[] }
 type DataV4 = Omit<Data, 'version' | 'storeExercises'> & { version: 4; storeExercises: LegacyWeight[] }
 type LegacySetting = { storeId: StoreId; storeName: string; exerciseId: string; text: string }
 type LegacyStoreExercise = LegacyWeight & { settings: string }
-export type Data = { version: 6; legacySettings: LegacySetting[]; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; storeExercises: StoreExercise[] }
-export const emptyData = (): Data => ({ version: 6, legacySettings: [], exercises: [], workouts: [], stores: defaultStores(), storeExercises: [] })
+export type Data = { version: 7; legacySettings: LegacySetting[]; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; storeExercises: StoreExercise[] }
+export const emptyData = (): Data => ({ version: 7, legacySettings: [], exercises: addCardioDefaults([]), workouts: [], stores: defaultStores(), storeExercises: [] })
 export const normalizeName = (name: string) => name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ja')
 // crypto.randomUUID is unavailable on iPhone when viewing a LAN HTTP URL.
 export function newId(): string {
@@ -45,11 +61,13 @@ function parseLegacy(value: unknown): LegacyData {
   let stores = defaultStores()
   let equipment: Equipment[] = []
   if (version === 2) {
-    if (!Array.isArray(d.stores) || d.stores.length !== 3 || !Array.isArray(d.equipment)) throw new Error('店舗設定が不正です。')
-    stores = defaultStores().map(s => {
-      const matches = d.stores.filter(x=>x && x.id === s.id)
-      if (matches.length !== 1 || typeof matches[0].name !== 'string' || !matches[0].name.trim() || matches[0].name.length > 80) throw new Error('店舗名が不正です。')
-      return {id:s.id,name:matches[0].name.trim()}
+    if (!Array.isArray(d.stores) || !d.stores.length || !Array.isArray(d.equipment)) throw new Error('店舗設定が不正です。')
+    const storeIds = new Set<string>()
+    stores = d.stores.map(store => {
+      if (!store || typeof store.id !== 'string' || !store.id || store.id === 'other' || storeIds.has(store.id) ||
+          typeof store.name !== 'string' || !store.name.trim() || store.name.length > 80) throw new Error('店舗データが不正です。')
+      storeIds.add(store.id)
+      return {id:store.id,name:store.name.trim()}
     })
     const equipmentIds = new Set<string>()
     const keys = new Set<string>()
@@ -125,7 +143,7 @@ function parseV4(value: unknown): DataV4 {
     return note === undefined ? store : {...store, note}
   })
   const legacySettings = data.legacySettings.map(entry => {
-    if (!entry || !stores.some(s => s.id === entry.storeId) || typeof entry.storeName !== 'string' ||
+    if (!entry || typeof entry.storeId !== 'string' || !entry.storeId || typeof entry.storeName !== 'string' ||
         !exercises.some(e => e.id === entry.exerciseId) || typeof entry.text !== 'string') {
       throw new Error('旧店舗設定のデータが不正です。')
     }
@@ -144,12 +162,14 @@ function normalizeWeights(value: unknown): number[] {
   return [...new Set<number>(value)].sort((a, b) => a - b)
 }
 
-export function parseBackup(value: unknown): Data {
+function parseStrengthBackup(value: unknown): Data {
+  // Earlier exports contain strength records only.
+
   const version = (value as {version?: number} | null)?.version
   if (version !== 5 && version !== 6) {
     const old = parseV4(value)
     return {
-      ...old, version: 6,
+      ...old, version: 7,
       storeExercises: old.storeExercises.map(({storeId, exerciseId}) => ({storeId, exerciseId})),
     }
   }
@@ -158,13 +178,65 @@ export function parseBackup(value: unknown): Data {
   if (!Array.isArray(data.storeExercises)) throw new Error('店舗データが不正です。')
   const core = parseV4({...data, version: 4, storeExercises: data.storeExercises.map(row => ({...row, weights: [0]}))})
   return {
-    ...core, version: 6,
+    ...core, version: 7,
     exercises: core.exercises.map((exercise, index) => {
       const weights = data.exercises[index].weights
       return weights === undefined ? exercise : {...exercise, weights: normalizeWeights(weights)}
     }),
     storeExercises: core.storeExercises.map(({storeId, exerciseId}) => ({storeId, exerciseId})),
   }
+}
+
+function addCardioDefaults(exercises: Exercise[]): Exercise[] {
+  const result = [...exercises]
+  const defaults: Exercise[] = [
+    {id:'cardio-treadmill',name:'トレッドミル',cardioFields:['distance','incline']},
+    {id:'cardio-climbmill',name:'クライムミル',cardioFields:['floors','steps']},
+  ]
+  for (const exercise of defaults) {
+    if (result.some(row => normalizeName(row.name) === normalizeName(exercise.name))) continue
+    let id = exercise.id
+    while (result.some(row => row.id === id)) id += '-preset'
+    result.push({...exercise,id})
+  }
+  return result
+}
+
+export function parseBackup(value: unknown): Data {
+  const version = (value as {version?: number} | null)?.version
+  if (version !== 7) {
+    const old = parseStrengthBackup(value)
+    return {...old,exercises:addCardioDefaults(old.exercises)}
+  }
+  const data = value as Data
+  if (!Array.isArray(data.workouts)) throw new Error('記録データが不正です。')
+  const core = parseStrengthBackup({...data,version:6,workouts:data.workouts.filter(record=>record && !isCardio(record))})
+  const exercises = core.exercises.map((exercise,index) => {
+    const fields = data.exercises[index].cardioFields
+    if (fields === undefined) return exercise
+    if (!Array.isArray(fields) || fields.some(key=>!cardioFields.some(field=>field.key===key))) throw new Error('有酸素運動の入力項目が不正です。')
+    return {...exercise,cardioFields:[...new Set(fields)]}
+  })
+  const ids = new Set(core.workouts.map(record=>record.id))
+  const strength = new Map(core.workouts.map(record=>[record.id,record]))
+  const workouts = data.workouts.map(record => {
+    if (!record || ('kind' in record && !isCardio(record))) throw new Error('記録データが不正です。')
+    if (!isCardio(record)) return strength.get(record.id)!
+    const {id,exerciseId,date,trainedAt,minutes,metrics} = record
+    if (typeof id !== 'string' || !id || ids.has(id) || !exercises.some(row=>row.id===exerciseId) ||
+        !validDate(date) || !Number.isFinite(minutes) || minutes <= 0 ||
+        (trainedAt !== undefined && (!Number.isSafeInteger(trainedAt) || Math.abs(trainedAt)>8.64e15)) ||
+        !metrics || typeof metrics !== 'object' || Array.isArray(metrics)) throw new Error('有酸素運動の記録が不正です。')
+    for (const [key, metric] of Object.entries(metrics)) {
+      const field = cardioFields.find(row=>row.key===key)
+      if (!field || !Number.isFinite(metric) || metric < 0 || (field.integer && !Number.isSafeInteger(metric))) {
+        throw new Error('有酸素運動の数値が不正です。')
+      }
+    }
+    ids.add(id)
+    return {id,exerciseId,date, ...(trainedAt === undefined ? {} : {trainedAt}), kind:'cardio' as const,minutes,metrics}
+  })
+  return {...core,exercises,workouts}
 }
 
 function openDB(): Promise<IDBDatabase> {
@@ -198,6 +270,7 @@ export async function saveData(data: Data): Promise<void> {
       if (previous.result?.version === 1 || previous.result?.version === 2) store.put(previous.result, 'before-v3-migration')
       if ([1, 2, 3].includes(previous.result?.version)) store.put(previous.result, 'before-v4-migration')
       if ([1, 2, 3, 4].includes(previous.result?.version)) store.put(previous.result, 'before-v5-migration')
+      if ([1, 2, 3, 4, 5, 6].includes(previous.result?.version)) store.put(previous.result, 'before-v7-migration')
       store.put(clean, 'main')
     }
     tx.oncomplete = () => { db.close(); resolve() }

@@ -19,11 +19,10 @@ describe('IndexedDBへの保存',()=>{
  await saveData(emptyData()); expect(await loadData()).toEqual(emptyData())
  await saveData(sample); expect(await loadData()).toEqual(sample)
  const edited={...sample,workouts:[{...sample.workouts[0],weight:30}]}
- await saveData(edited); expect((await loadData()).workouts[0].weight).toBe(30)
+ await saveData(edited); expect((await loadData()).workouts.filter(record=>"weight" in record)[0].weight).toBe(30)
  await saveData({...sample,workouts:[]}); expect((await loadData()).workouts).toHaveLength(0)
  await saveData(parseBackup(JSON.parse(JSON.stringify(sample)))); expect(await loadData()).toEqual(sample)
  await expect(saveData({...sample,exercises:[]})).rejects.toThrow()
  expect(await loadData()).toEqual(sample)
  })
 })
-

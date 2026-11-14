@@ -32,10 +32,17 @@ export default function ExerciseGrid({exercises, workouts, select}: {
   }, [next, now])
 
   return <div className="store-grid" aria-label="種目一覧">
-    {ranked.map(({exercise, tone}) => <button key={exercise.id}
+    {ranked.map(({exercise, time, tone}) => <button key={exercise.id}
+      aria-label={exercise.name}
       className={tone === 'normal' ? undefined : 'exercise-' + tone}
       onClick={() => select(exercise.id)}>
       {exercise.name}
+      {Number.isFinite(time) && <span>
+        <time dateTime={new Date(time).toISOString()}>
+          {new Date(time).toLocaleString('ja-JP', {dateStyle:'short', timeStyle:'short'})}
+        </time>
+        <br/>{Math.max(0, Math.floor((now - time) / 3_600_000))}時間前
+      </span>}
     </button>)}
   </div>
 }

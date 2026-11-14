@@ -20,7 +20,7 @@ it('6種目を指定順で表示し、赤・黄色・通常色を割り当てる
   vi.setSystemTime(now)
   render(<ExerciseGrid exercises={exercises} workouts={workouts} select={() => {}} />)
   const buttons = screen.getAllByRole('button')
-  expect(buttons.map(button => button.textContent)).toEqual(names)
+  expect(buttons.map(button => button.getAttribute('aria-label'))).toEqual(names)
   expect(buttons.map(button => button.className)).toEqual(['','','','','exercise-warm','exercise-recent'])
   expect(exercises.map(exercise => exercise.name)).toEqual([...names].reverse())
 })
@@ -47,3 +47,13 @@ it('全履歴から最新を採用し、編集や削除の結果を反映する'
   expect(tone([older])).toBe('normal')
 })
 
+
+it('有酸素運動を筋トレと同じ日時・色分けルールで表示する', () => {
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+  render(<ExerciseGrid exercises={[{id:'run',name:'トレッドミル',cardioFields:[]}]} workouts={[
+    {id:'record',exerciseId:'run',date:'2026-11-10',trainedAt:now-24*hour,kind:'cardio',minutes:20,metrics:{}},
+  ]} select={() => {}} />)
+  expect(screen.getByRole('button',{name:'トレッドミル'}).className).toBe('exercise-recent')
+  expect(screen.getByText(/24時間前/)).toBeTruthy()
+})

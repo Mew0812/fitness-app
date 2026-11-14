@@ -72,3 +72,8 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 }
 .set-counter-controls button { min-height: 48px; padding: 0; font-size: 24px; }
 .set-counter-controls output { text-align: center; font-size: 28px; font-weight: 700; }
+
+.store-add { margin-top: 12px; }
+.store-add > button { width: 100%; }
+.cardio-fields input[type="checkbox"] { display: inline-block; width: auto; min-height: 0; margin: 8px; }
+.workout-card .cardio-numbers > label:first-child { grid-column: 1 / -1; }
