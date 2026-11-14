@@ -1,4 +1,4 @@
-import { isCardio, isBodyweight, isTreadmill } from './data'
+import { isCardio, isBodyweight, isTreadmill, isClimbmill } from './data'
 import { CardioSummary } from './CardioForm'
 import type { Workout, StrengthWorkout, Exercise } from './data'
 
@@ -11,7 +11,7 @@ export default function ExerciseProgress({exerciseId, workouts, exercise}: {exer
   if (isCardio(latest)) return <section className="card" aria-label="全店舗共通の記録">
     <h3>全店舗共通の記録</h3>
     <p>前回記録 {latest.date}</p>
-    <CardioSummary record={latest} distanceOnly={isTreadmill(exercise)}/>
+    <CardioSummary record={latest} distanceOnly={isTreadmill(exercise)} climbOnly={isClimbmill(exercise)}/>
   </section>
 
   const daily = new Map<string, number>()
@@ -23,7 +23,7 @@ export default function ExerciseProgress({exerciseId, workouts, exercise}: {exer
 
   return <section className="card" aria-label="全店舗共通の記録">
     <h3>全店舗共通の記録</h3>
-    <p>前回記録 {latest.date} · {!isBodyweight(exercise) && `${latest.weight} kg × `}{latest.reps} 回 × {latest.sets} セット</p>
+    <p>前回記録 {latest.date} · {!isBodyweight(exercise) && `${latest.weight} kg × `}{latest.reps} 回 {!isBodyweight(exercise) && <>× {latest.sets} セット</>}</p>
     {!isBodyweight(exercise) && <><p>自己ベスト（最高重量） <strong>{best} kg</strong></p>
     <details>
       <summary>成長グラフ（日ごとの最高重量）</summary>
