@@ -36,7 +36,7 @@ export const isTreadmill = (exercise?: Exercise) => exercise?.cardioFields !== u
 export const isClimbmill = (exercise?: Exercise) => exercise?.cardioFields !== undefined &&
   (exercise.id === 'cardio-climbmill' || normalizeName(exercise.name) === 'クライムミル')
 export const isBodyweight = (exercise?: Exercise) => exercise?.cardioFields === undefined &&
-  Boolean(exercise?.name.includes('（自重）'))
+  Boolean(exercise && /（(?:自重|自宅)）/.test(exercise.name))
 export function newId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   return Array.from(bytes, n => n.toString(16).padStart(2,'0')).join('')

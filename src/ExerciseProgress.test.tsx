@@ -23,8 +23,8 @@ it('同日記録を保存順で数え、追加・編集・削除に追従する'
   expect(screen.getByText('1,050')).toBeTruthy()
 })
 
-it('自重は回数、トレッドミルは距離で表示する',()=>{
-  const {rerender}=render(<ExerciseProgress exercise={{...exercise,name:'懸垂（自重）'}} workouts={[first]}/>)
+it.each(['自重','自宅'])('%sは回数、トレッドミルは距離で表示する',(marker)=>{
+  const {rerender}=render(<ExerciseProgress exercise={{...exercise,name:'懸垂（'+marker+'）'}} workouts={[first]}/>)
   expect(screen.getByRole('button',{name:'1回目 10 回'})).toBeTruthy()
   const cardio: CardioWorkout={id:'run',kind:'cardio',exerciseId:'bench',date:first.date,minutes:30,metrics:{distance:3.5}}
   rerender(<ExerciseProgress exercise={{...exercise,name:'トレッドミル',cardioFields:['distance']}} workouts={[cardio]}/>)

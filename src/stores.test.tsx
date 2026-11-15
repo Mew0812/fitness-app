@@ -371,14 +371,14 @@ it('旧バックアップと同名の有酸素種目を重複作成しない',()
  expect(restored.workouts).toEqual(data.workouts)
 })
 
-it('自重種目は回数だけで保存でき、過去の重量データを保持する',async()=>{
+it.each(['自重','自宅'])('%s種目は回数だけで保存でき、過去の重量データを保持する',async(marker)=>{
  const data=fixture()
- data.exercises[0].name='懸垂（自重）ワイド'
+ data.exercises[0].name=('懸垂（'+marker+'）ワイド')
  await saveData(data)
  const user=userEvent.setup()
  await launch()
  await user.click(screen.getByRole('button',{name:'A店'}))
- await user.click(screen.getByRole('button',{name:'懸垂（自重）ワイド'}))
+ await user.click(screen.getByRole('button',{name:('懸垂（'+marker+'）ワイド')}))
  expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
  expect(screen.queryByRole('button',{name:'セット数を増やす'})).toBeNull()
  await user.type(screen.getByLabelText('回数'),'12')
