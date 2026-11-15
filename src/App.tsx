@@ -114,14 +114,14 @@ export default function App() {
         await navigator.share(shareData)
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setMessage('共有できませんでした。「JSONをダウンロード」をお試しください。')
+          setMessage('共有できませんでした。もう一度お試しください。')
         }
       }
       return
     }
     downloadBackup(file)
   }
-  function downloadBackup(file = new File([JSON.stringify(data, null, 2)], `myfitness-${today()}.json`, {type: 'application/json'})) {
+  function downloadBackup(file: File) {
     const url = URL.createObjectURL(file)
     const link = document.createElement('a')
     link.href = url
@@ -164,7 +164,7 @@ export default function App() {
     <button className="primary" onClick={() => { dismissReminder(); setTab('backup') }}>バックアップへ</button>
     <button type="button" onClick={dismissReminder}>閉じる</button>
   </section>
-  const backupPanel = <><p className="eyebrow">KEEP YOUR PROGRESS</p><h2>バックアップと復元</h2><div className="card"><h3>大切な記録を、手元に。</h3><p>データはこのブラウザの端末内に保存されます。別端末とは同期しません。ブラウザのデータ削除や端末の変更に備え、定期的にJSONを保存してください。</p><button className="primary" onClick={backup}>JSONバックアップを保存</button><button type="button" onClick={() => downloadBackup()}>JSONをダウンロード</button><hr/><h3>バックアップから復元</h3><p>このアプリで保存したJSONを選択します。内容を確認後、現在の全データを置き換えます。</p><input ref={file} aria-label="復元するJSONファイル" type="file" accept=".json,application/json" onChange={e=>void restore(e.target.files?.[0])}/></div></>
+  const backupPanel = <><p className="eyebrow">KEEP YOUR PROGRESS</p><h2>バックアップと復元</h2><div className="card"><h3>大切な記録を、手元に。</h3><p>データはこのブラウザの端末内に保存されます。別端末とは同期しません。ブラウザのデータ削除や端末の変更に備え、定期的にJSONを保存してください。</p><button className="primary" onClick={backup}>JSONバックアップを保存</button><hr/><h3>バックアップから復元</h3><p>このアプリで保存したJSONを選択します。内容を確認後、現在の全データを置き換えます。</p><input ref={file} aria-label="復元するJSONファイル" type="file" accept=".json,application/json" onChange={e=>void restore(e.target.files?.[0])}/></div></>
   if (!store && tab === 'backup') return <div className="app"><main>
     <button type="button" onClick={() => setTab('record')}>店舗選択に戻る</button>
     <p role="status" className="status">{message}</p>
