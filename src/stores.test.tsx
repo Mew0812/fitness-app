@@ -14,7 +14,7 @@ const fixture = (): Data => ({...emptyData(),exercises:[{id:'bench',name:'ベン
 ],workouts:[{id:'old',exerciseId:'bench',date:'2020-01-01',weight:12.5,reps:8,sets:2}]})
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 beforeEach(async()=>{await saveData(fixture());vi.spyOn(window,'confirm').mockReturnValue(true);vi.spyOn(window,'scrollTo').mockImplementation(()=>{})})
-async function launch() {render(<App/>);await waitFor(()=>expect((screen.getByRole('button',{name:'A店'}) as HTMLButtonElement).disabled).toBe(false))}
+async function launch() {render(<App/>);await waitFor(()=>expect(screen.getByRole('button',{name:'A店'}).matches(':disabled')).toBe(false))}
 async function openSettings(user: ReturnType<typeof userEvent.setup>, name: string) {
  await user.click(screen.getByLabelText('設定メニュー'))
  await user.click(screen.getByRole('button',{name}))
