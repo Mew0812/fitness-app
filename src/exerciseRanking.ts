@@ -1,3 +1,4 @@
+import {workoutTime} from './workoutRecords'
 import type { Exercise, Workout } from './data'
 
 const hour = 60 * 60 * 1000
@@ -6,7 +7,7 @@ export const thresholds = [48 * hour, 72 * hour]
 export function rankExercises(exercises: Exercise[], workouts: Workout[], now: number) {
   const latest = new Map<string, number>()
   for (const workout of workouts) {
-    const time = workout.trainedAt ?? new Date(workout.date + 'T00:00:00').getTime()
+    const time = workoutTime(workout)
     latest.set(workout.exerciseId, Math.max(latest.get(workout.exerciseId) ?? -Infinity, time))
   }
   return exercises.map(exercise => {

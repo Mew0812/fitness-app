@@ -1,10 +1,10 @@
+import {workoutTime} from './workoutRecords'
 import { useState } from 'react'
-import { isCardio, isBodyweight, isTreadmill, isClimbmill } from './data'
+import { isCardio, isBodyweight, isTreadmill, isClimbmill, withRecordingMode } from './data'
 import type { Exercise, Workout } from './data'
 
 const pageSize = 8
 const format = new Intl.NumberFormat('ja-JP', {maximumFractionDigits: 8})
-const timestamp = (record: Workout) => record.trainedAt ?? new Date(record.date + 'T00:00:00').getTime()
 
 export default function ExerciseProgress({workouts, exercise}: {workouts: Workout[]; exercise: Exercise}) {
   const [climbMetric, setClimbMetric] = useState<'floors' | 'steps'>('floors')
@@ -13,12 +13,12 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
   const climb = isClimbmill(exercise)
   const treadmill = isTreadmill(exercise)
   const bodyweight = isBodyweight(exercise)
-  const cardio = exercise.cardioFields !== undefined
+  const cardio = withRecordingMode(exercise).recordingMode === 'cardio'
   const unit = climb ? (climbMetric === 'floors' ? '階' : 'ステップ') : treadmill ? 'km' : cardio ? '分' : bodyweight ? '回' : 'ポイント'
   const label = climb ? (climbMetric === 'floors' ? '登った階数' : 'ステップ数') : treadmill ? '走行距離' : cardio ? '運動時間' : bodyweight ? '回数' : 'トレーニング量'
 
   const attempts = workouts.filter(record => record.exerciseId === exercise.id)
-    .sort((a, b) => timestamp(a) - timestamp(b))
+    .sort((a, b) => workoutTime(a) - workoutTime(b))
     .map((record, index) => {
       const value = isCardio(record)
         ? climb ? record.metrics[climbMetric] : treadmill ? record.metrics.distance : record.minutes

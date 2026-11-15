@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { availableExercises, emptyData, loadData, parseBackup, saveData, isCardio } from './data'
+import { availableExercises, emptyData, loadData, parseBackup, saveData, isCardio, withRecordingMode } from './data'
 import type { Data } from './data'
-const fixture = (): Data => ({...emptyData(),exercises:[{id:'bench',name:'ベンチプレス',settings:'座面：4',weights:[20,25,30]},{id:'squat',name:'スクワット',weights:[40]}],storeExercises:[
+const fixture = (): Data => ({...emptyData(),exercises:[{id:'bench',name:'ベンチプレス',recordingMode:'strength',settings:'座面：4',weights:[20,25,30]},{id:'squat',name:'スクワット',recordingMode:'strength',weights:[40]}],storeExercises:[
  {storeId:'a',exerciseId:'bench'},
  {storeId:'b',exerciseId:'bench'},
  {storeId:'c',exerciseId:'bench'},
@@ -73,7 +73,7 @@ describe('店舗の選択と統合',()=>{
 describe('旧データの移行とJSON互換性',()=>{
  it('旧バージョンを移行してもID・履歴を変えず、新形式で設定ごと復元する',async()=>{
  const d=fixture();const legacy={version:1,exercises:d.exercises.map(({id,name})=>({id,name})),workouts:d.workouts}
- const migrated=parseBackup(legacy);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises));expect(migrated.workouts).toEqual(d.workouts);expect(migrated.storeExercises).toEqual([])
+ const migrated=parseBackup(legacy);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises.map(withRecordingMode)));expect(migrated.workouts).toEqual(d.workouts);expect(migrated.storeExercises).toEqual([])
  await saveData(migrated);expect(await loadData()).toEqual(migrated)
  const restored=parseBackup(JSON.parse(JSON.stringify(d)));await saveData(restored);expect(await loadData()).toEqual(d)
  })
@@ -91,7 +91,7 @@ it('IndexedDBの旧形式を直接読み込み、初回保存前の原本を残�
  const d=fixture();const legacy={version:1,exercises:d.exercises.map(({id,name})=>({id,name})),workouts:d.workouts}
  const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('myfitness',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})
  await new Promise<void>((resolve,reject)=>{const t=db.transaction('data','readwrite');t.objectStore('data').put(legacy,'main');t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error)})
- const migrated=await loadData();expect(migrated.version).toBe(7);expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises))
+ const migrated=await loadData();expect(migrated.version).toBe(8);expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises.map(withRecordingMode)))
  await saveData({...migrated,stores:migrated.stores.map(s=>s.id==='a'?{...s,name:'移行後A店'}:s)})
  const original=await new Promise((resolve,reject)=>{const t=db.transaction('data','readonly');const r=t.objectStore('data').get('before-v2-migration');t.oncomplete=()=>resolve(r.result);t.onerror=()=>reject(t.error)})
  expect(original).toEqual(legacy);expect((await loadData()).workouts).toEqual(legacy.workouts);db.close()
@@ -118,7 +118,7 @@ it('旧v2の複数器具を統合し履歴と原本を維持、設定付きJSON�
  ]}
  const db=await new Promise<IDBDatabase>((resolve,reject)=>{const r=indexedDB.open('myfitness',1);r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error)})
  await new Promise<void>((resolve,reject)=>{const t=db.transaction('data','readwrite');t.objectStore('data').put(legacy,'main');t.oncomplete=()=>resolve();t.onerror=()=>reject(t.error)})
- const migrated=await loadData();expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises));expect(migrated.storeExercises).toHaveLength(2)
+ const migrated=await loadData();expect(migrated.workouts).toEqual(legacy.workouts);expect(migrated.exercises).toEqual(expect.arrayContaining(legacy.exercises.map(withRecordingMode)));expect(migrated.storeExercises).toHaveLength(2)
  expect(migrated.storeExercises[0]).toEqual({storeId:'a',exerciseId:'bench'})
  expect(migrated.exercises[0].weights).toBeUndefined()
  await saveData(migrated)
@@ -366,14 +366,14 @@ it('旧バックアップと同名の有酸素種目を重複作成しない',()
  const data=fixture()
  data.exercises.push({id:'old-treadmill',name:'トレッドミル',settings:'旧設定'})
  const restored=parseBackup({...data,version:6})
- expect(restored.exercises.filter(row=>row.name==='トレッドミル')).toEqual([{id:'old-treadmill',name:'トレッドミル',settings:'旧設定'}])
+ expect(restored.exercises.filter(row=>row.name==='トレッドミル')).toEqual([{id:'old-treadmill',name:'トレッドミル',settings:'旧設定',recordingMode:'strength'}])
  expect(restored.exercises.some(row=>row.name==='クライムミル' && row.cardioFields?.includes('floors'))).toBe(true)
  expect(restored.workouts).toEqual(data.workouts)
 })
 
 it.each(['自重','自宅'])('%s種目は回数だけで保存でき、過去の重量データを保持する',async(marker)=>{
  const data=fixture()
- data.exercises[0].name=('懸垂（'+marker+'）ワイド')
+ data.exercises[0]={...data.exercises[0],name:('懸垂（'+marker+'）ワイド'),recordingMode:'reps'}
  await saveData(data)
  const user=userEvent.setup()
  await launch()
@@ -401,3 +401,100 @@ it('旧トレッドミル記録の時間・傾斜を復元時にも保持する'
  expect(restored.exercises.at(-1)?.cardioFields).toEqual(['distance'])
  expect(()=>parseBackup({...data,workouts:[{...record,minutes:undefined,metrics:{distance:0}}]})).toThrow()
 })
+
+it.each([
+  ['strength', '通常', undefined, undefined, '重量 (kg)', '35', '36', '36kg × 10回 × 1セット'],
+  ['reps', '懸垂（自宅）', undefined, undefined, '回数', '8', '9', '9回'],
+  ['cardio', 'トレッドミル', 'distance', ['distance'], '走行距離 (km)', '3.5', '4.5', '4.5km'],
+  ['cardio', 'クライムミル', 'climb', ['floors','steps'], '登った階数', '30', '35', '35階'],
+] as const)('%s %s の保存・編集・削除を表示へ反映する', async (recordingMode, name, cardioMode, fields, label, input, changed, summary) => {
+  const data = fixture()
+  data.exercises[0] = {...data.exercises[0],name,recordingMode,cardioMode,cardioFields:fields ? [...fields] : undefined}
+  await saveData(data)
+  const user = userEvent.setup()
+  await launch()
+  await user.click(screen.getByRole('button',{name:'A店'}))
+  await user.click(screen.getByRole('button',{name}))
+  await user.type(screen.getByLabelText(label),input)
+  if (recordingMode === 'strength') {
+    await user.type(screen.getByLabelText('回数'),'10')
+    await user.click(screen.getByRole('button',{name:'セット数を増やす'}))
+  }
+  await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+  await waitFor(()=>expect(screen.getAllByRole('article')).toHaveLength(1))
+  const saved = (await loadData()).workouts[1]
+  await user.click(within(screen.getByRole('article')).getByRole('button',{name:'編集'}))
+  await user.clear(screen.getByLabelText(label))
+  await user.type(screen.getByLabelText(label),changed)
+  await user.click(screen.getByRole('button',{name:'変更を保存'}))
+  await screen.findByText('前回の記録：'+summary)
+  expect((await loadData()).workouts[1].id).toBe(saved.id)
+  const graph = within(screen.getByRole('region',{name:'成長グラフ'}))
+  expect(graph.getByRole('button',{name:new RegExp('2回目.*'+changed)})).toBeTruthy()
+  expect(within(graph.getByRole('list',{name:'直近の記録'})).getAllByRole('listitem')).toHaveLength(2)
+  await user.click(within(screen.getByRole('article')).getByRole('button',{name:'削除'}))
+  await waitFor(()=>expect(within(graph.getByRole('list',{name:'直近の記録'})).getAllByRole('listitem')).toHaveLength(1))
+  expect((await loadData()).workouts).toEqual(data.workouts)
+}, 10000)
+
+it('種目名を変更しても回数のみの記録方式を維持する', async () => {
+  const data = fixture()
+  data.exercises[0] = {...data.exercises[0], name:'懸垂（自宅）', recordingMode:'reps'}
+  await saveData(data)
+  const user = userEvent.setup()
+  await launch()
+  await user.click(screen.getByRole('button',{name:'A店'}))
+  await openSettings(user,'種目の管理')
+  const row = screen.getAllByRole('article').find(article=>article.querySelector('h3')?.textContent==='懸垂（自宅）')!
+  await user.click(within(row).getByRole('button',{name:'編集'}))
+  await user.clear(screen.getByLabelText('種目名'))
+  await user.type(screen.getByLabelText('種目名'),'懸垂')
+  await user.click(screen.getByRole('button',{name:'種目設定を保存'}))
+  await waitFor(async()=>expect((await loadData()).exercises[0]).toMatchObject({id:'bench', name:'懸垂', recordingMode:'reps'}))
+  await user.click(screen.getByRole('button',{name:'記録する'}))
+  await user.click(screen.getByRole('button',{name:'懸垂'}))
+  expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
+  expect(screen.getByText('前回の記録：8回')).toBeTruthy()
+  expect((await loadData()).workouts).toEqual(data.workouts)
+})
+
+it('共有されるJSONを復元でき、不正なファイルは保存済みデータを変更しない', async () => {
+  const user = userEvent.setup()
+  const share = vi.fn().mockResolvedValue(undefined)
+  Object.defineProperties(navigator, {
+    share: {configurable:true,value:share},
+    canShare: {configurable:true,value:()=>true},
+  })
+  try {
+    await launch()
+    await user.click(screen.getByRole('button',{name:'A店'}))
+    await openSettings(user,'バックアップ・復元')
+    await user.click(screen.getByRole('button',{name:'JSONバックアップを保存'}))
+    const file = share.mock.calls[0][0].files[0] as File
+    const json = await new Promise<string>((resolve,reject)=>{
+      const reader = new FileReader()
+      reader.onload = () => resolve(String(reader.result))
+      reader.onerror = () => reject(reader.error)
+      reader.readAsText(file)
+    })
+    const before = await loadData()
+    expect(parseBackup(JSON.parse(json))).toEqual(before)
+    const invalid = new File(['{}'],'invalid.json',{type:'application/json'})
+    Object.defineProperty(invalid,'text',{value:async()=> '{}'})
+    const input = screen.getByLabelText('復元するJSONファイル')
+    await user.upload(input,invalid)
+    await screen.findByText('対応していないバックアップ形式です。')
+    expect((await loadData()).workouts).toEqual(before.workouts)
+    await saveData({...before, workouts:[]}, before)
+    cleanup()
+    await launch()
+    await user.click(screen.getByRole('button',{name:'A店'}))
+    await openSettings(user,'バックアップ・復元')
+    Object.defineProperty(file,'text',{value:async()=>json})
+    await user.upload(screen.getByLabelText('復元するJSONファイル'),file)
+    await waitFor(async()=>expect(await loadData()).toEqual(before))
+  } finally {
+    Reflect.deleteProperty(navigator,'share')
+    Reflect.deleteProperty(navigator,'canShare')
+  }
+}, 10000)

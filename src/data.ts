@@ -2,7 +2,9 @@ export type StoreId = string
 export type StoreChoice = StoreId
 export type Store = { id: StoreId; name: string; note?: string }
 export type Equipment = { id: string; storeId: StoreId; exerciseId: string; name: string; weights: number[] }
-export type Exercise = { id: string; name: string; settings?: string; weights?: number[]; cardioFields?: CardioField[] }
+export type RecordingMode = 'strength' | 'reps' | 'cardio'
+export type CardioMode = 'timed' | 'distance' | 'climb'
+export type Exercise = { id: string; name: string; recordingMode?: RecordingMode; cardioMode?: CardioMode; settings?: string; weights?: number[]; cardioFields?: CardioField[] }
 export type StrengthWorkout = { id: string; exerciseId: string; date: string; weight: number; reps: number; sets: number; trainedAt?: number }
 export const cardioFields = [
   {key:'distance', label:'走行距離 (km)', unit:'km', integer:false},
@@ -27,16 +29,27 @@ type LegacyWeight = StoreExercise & { weights: number[] }
 type DataV4 = Omit<Data, 'version' | 'storeExercises'> & { version: 4; storeExercises: LegacyWeight[] }
 type LegacySetting = { storeId: StoreId; storeName: string; exerciseId: string; text: string }
 type LegacyStoreExercise = LegacyWeight & { settings: string }
-export type Data = { version: 7; legacySettings: LegacySetting[]; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; storeExercises: StoreExercise[] }
-export const emptyData = (): Data => ({ version: 7, legacySettings: [], exercises: addCardioDefaults([]), workouts: [], stores: defaultStores(), storeExercises: [] })
+export type Data = { version: 8; legacySettings: LegacySetting[]; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; storeExercises: StoreExercise[] }
+export const emptyData = (): Data => ({ version: 8, legacySettings: [], exercises: addCardioDefaults([]).map(withRecordingMode), workouts: [], stores: defaultStores(), storeExercises: [] })
 export const normalizeName = (name: string) => name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ja')
 // crypto.randomUUID is unavailable on iPhone when viewing a LAN HTTP URL.
-export const isTreadmill = (exercise?: Exercise) => exercise?.cardioFields !== undefined &&
-  (exercise.id === 'cardio-treadmill' || normalizeName(exercise.name) === 'トレッドミル')
-export const isClimbmill = (exercise?: Exercise) => exercise?.cardioFields !== undefined &&
-  (exercise.id === 'cardio-climbmill' || normalizeName(exercise.name) === 'クライムミル')
-export const isBodyweight = (exercise?: Exercise) => exercise?.cardioFields === undefined &&
-  Boolean(exercise && /（(?:自重|自宅)）/.test(exercise.name))
+export function withRecordingMode(exercise: Exercise): Exercise {
+  if (exercise.recordingMode !== undefined) return exercise
+  if (exercise.cardioFields !== undefined) {
+    const name = normalizeName(exercise.name)
+    const cardioMode = exercise.id === 'cardio-treadmill' || name === 'トレッドミル' ? 'distance'
+      : exercise.id === 'cardio-climbmill' || name === 'クライムミル' ? 'climb' : 'timed'
+    return {...exercise, recordingMode:'cardio', cardioMode}
+  }
+  return {...exercise, recordingMode: /（(?:自重|自宅)）/.test(exercise.name) ? 'reps' : 'strength'}
+}
+
+export const isTreadmill = (exercise?: Exercise) => exercise !== undefined &&
+  withRecordingMode(exercise).cardioMode === 'distance'
+export const isClimbmill = (exercise?: Exercise) => exercise !== undefined &&
+  withRecordingMode(exercise).cardioMode === 'climb'
+export const isBodyweight = (exercise?: Exercise) => exercise !== undefined &&
+  withRecordingMode(exercise).recordingMode === 'reps'
 export function newId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(16))
   return Array.from(bytes, n => n.toString(16).padStart(2,'0')).join('')
@@ -175,7 +188,7 @@ function parseStrengthBackup(value: unknown): Data {
   if (version !== 5 && version !== 6) {
     const old = parseV4(value)
     return {
-      ...old, version: 7,
+      ...old, version: 8,
       storeExercises: old.storeExercises.map(({storeId, exerciseId}) => ({storeId, exerciseId})),
     }
   }
@@ -184,7 +197,7 @@ function parseStrengthBackup(value: unknown): Data {
   if (!Array.isArray(data.storeExercises)) throw new Error('店舗データが不正です。')
   const core = parseV4({...data, version: 4, storeExercises: data.storeExercises.map(row => ({...row, weights: [0]}))})
   return {
-    ...core, version: 7,
+    ...core, version: 8,
     exercises: core.exercises.map((exercise, index) => {
       const weights = data.exercises[index].weights
       return weights === undefined ? exercise : {...exercise, weights: normalizeWeights(weights)}
@@ -210,18 +223,31 @@ function addCardioDefaults(exercises: Exercise[]): Exercise[] {
 
 export function parseBackup(value: unknown): Data {
   const version = (value as {version?: number} | null)?.version
-  if (version !== 7) {
+  if (version !== 7 && version !== 8) {
     const old = parseStrengthBackup(value)
-    return {...old,exercises:addCardioDefaults(old.exercises)}
+    return {...old,exercises:addCardioDefaults(old.exercises).map(withRecordingMode)}
   }
   const data = value as Data
   if (!Array.isArray(data.workouts)) throw new Error('記録データが不正です。')
   const core = parseStrengthBackup({...data,version:6,workouts:data.workouts.filter(record=>record && !isCardio(record))})
   const exercises = core.exercises.map((exercise,index) => {
-    const fields = data.exercises[index].cardioFields
-    if (fields === undefined) return exercise
-    if (!Array.isArray(fields) || fields.some(key=>!cardioFields.some(field=>field.key===key))) throw new Error('有酸素運動の入力項目が不正です。')
-    return {...exercise,cardioFields:isTreadmill({...exercise,cardioFields:fields}) ? ['distance' as const] : [...new Set(fields)]}
+    const source = data.exercises[index]
+    const fields = source.cardioFields
+    if (fields !== undefined && (!Array.isArray(fields) || fields.some(key=>!cardioFields.some(field=>field.key===key)))) {
+      throw new Error('有酸素運動の入力項目が不正です。')
+    }
+    const migrated = withRecordingMode({
+      ...exercise,
+      ...(fields === undefined ? {} : {cardioFields:[...new Set(fields)]}),
+      ...(version === 8 && source.recordingMode !== undefined ? {recordingMode:source.recordingMode} : {}),
+      ...(version === 8 && source.cardioMode !== undefined ? {cardioMode:source.cardioMode} : {}),
+    })
+    const {recordingMode, cardioMode} = migrated
+    if ((recordingMode === 'cardio' && (fields === undefined || !['timed','distance','climb'].includes(cardioMode ?? ''))) ||
+        (recordingMode !== 'cardio' && (!['strength','reps'].includes(recordingMode ?? '') || fields !== undefined || cardioMode !== undefined))) {
+      throw new Error('種目の記録方式が不正です。')
+    }
+    return cardioMode === 'distance' ? {...migrated,cardioFields:['distance' as const]} : migrated
   })
   const ids = new Set(core.workouts.map(record=>record.id))
   const strength = new Map(core.workouts.map(record=>[record.id,record]))
@@ -245,41 +271,4 @@ export function parseBackup(value: unknown): Data {
   return {...core,exercises,workouts}
 }
 
-function openDB(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('myfitness', 1)
-    request.onupgradeneeded = () => request.result.createObjectStore('data')
-    request.onsuccess = () => resolve(request.result)
-    request.onerror = () => reject(request.error)
-    request.onblocked = () => reject(new Error('別のタブを閉じて再読み込みしてください。'))
-  })
-}
-export async function loadData(): Promise<Data> {
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('data', 'readonly')
-    const request = tx.objectStore('data').get('main')
-    tx.oncomplete = () => { db.close(); try { resolve(request.result ? parseBackup(request.result) : emptyData()) } catch (e) { reject(e) } }
-    tx.onerror = () => { db.close(); reject(tx.error) }
-  })
-}
-export async function saveData(data: Data): Promise<void> {
-  const clean = parseBackup(data)
-  const db = await openDB()
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction('data', 'readwrite')
-    const store = tx.objectStore('data')
-    const previous = store.get('main')
-    previous.onsuccess = () => {
-      // Retain legacy snapshots atomically with the first upgraded write.
-      if (previous.result?.version === 1) store.put(previous.result, 'before-v2-migration')
-      if (previous.result?.version === 1 || previous.result?.version === 2) store.put(previous.result, 'before-v3-migration')
-      if ([1, 2, 3].includes(previous.result?.version)) store.put(previous.result, 'before-v4-migration')
-      if ([1, 2, 3, 4].includes(previous.result?.version)) store.put(previous.result, 'before-v5-migration')
-      if ([1, 2, 3, 4, 5, 6].includes(previous.result?.version)) store.put(previous.result, 'before-v7-migration')
-      store.put(clean, 'main')
-    }
-    tx.oncomplete = () => { db.close(); resolve() }
-    tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? new Error('保存できませんでした。')) }
-  })
-}
+export { loadData, saveData } from './storage'

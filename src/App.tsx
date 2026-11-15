@@ -1,12 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
-import { emptyData, loadData, parseBackup, saveData, availableExercises, normalizeName, newId, cardioFields, isCardio, isBodyweight, isTreadmill, isClimbmill } from './data'
+import { emptyData, loadData, parseBackup, saveData, availableExercises, normalizeName, newId, cardioFields, isCardio, isBodyweight, isTreadmill, isClimbmill, withRecordingMode } from './data'
 import StoreSettings from './StoreSettings'
 import ExerciseSettings from './ExerciseSettings'
 import ExerciseProgress from './ExerciseProgress'
 import ExerciseGrid from './ExerciseGrid'
 import ExerciseGuide from './ExerciseGuide'
-import { CardioForm, CardioSummary } from './CardioForm'
+import BackupPanel from './BackupPanel'
+import WorkoutHistory from './WorkoutHistory'
+import StrengthForm from './StrengthForm'
+import { workoutTime, workoutTimestamp, updateWorkout } from './workoutRecords'
+import { CardioForm } from './CardioForm'
 import { cardioSummaryText } from './cardioSummary'
 import type { Data, Workout, StoreChoice, CardioField } from './data'
 import './App.css'
@@ -55,14 +59,13 @@ export default function App() {
   const [reps, setReps] = useState('')
   const [sets, setSets] = useState(0)
   const settingsMenu = useRef<HTMLDetailsElement>(null)
-  const file = useRef<HTMLInputElement>(null)
   useEffect(() => { loadData().then(d => {setData(d); setReady(true)}).catch(() => setMessage('データを読み込めません。Safariの通常モードで再読み込みしてください。')) }, [])
   async function commit(next: Data) {
-    if (saving.current) return false
+    if (!ready || saving.current) return false
     saving.current = true
     setBusy(true)
-    try { await saveData(next); setData(next); setMessage('端末に保存しました。'); return true }
-    catch { setMessage('保存できませんでした。空き容量とブラウザの設定をご確認ください。'); return false }
+    try { const clean = await saveData(next, data); setData(clean); setMessage('端末に保存しました。'); return true }
+    catch (error) { setMessage(error instanceof Error && error.name === 'ConcurrentUpdateError' ? error.message : '保存できませんでした。空き容量とブラウザの設定をご確認ください。'); return false }
     finally { saving.current = false; setBusy(false) }
   }
   function reset() { setEditing(''); setWeight(''); setReps(''); setSets(0) }
@@ -74,7 +77,7 @@ export default function App() {
       setMessage('重量は0〜2000 kgで入力してください。')
       return
     }
-    const trainedAt = previous?.date === date ? previous.trainedAt : date === today() ? currentTime() : undefined
+    const trainedAt = workoutTimestamp(previous, date, today(), currentTime())
     const record: Workout = { id: editing || newId(), exerciseId, date, trainedAt, weight: enteredWeight, reps: Number(reps), sets: bodyweight ? (previous && !isCardio(previous) ? previous.sets : 1) : sets }
     await saveWorkout(record)
   }
@@ -92,43 +95,23 @@ export default function App() {
     if (!trimmed) return
     if (data.exercises.some(x => normalizeName(x.name) === normalizeName(trimmed) && x.id !== editExercise)) {setMessage('同じ名前の種目が登録されています。'); return}
     const id = editExercise || newId()
-    if (await commit({...data, exercises: editExercise ? data.exercises.map(x => x.id === id ? {...x,name:trimmed,settings:exerciseSettings,cardioFields:exerciseFields} : x) : [...data.exercises,{id,name:trimmed,settings:exerciseSettings,cardioFields:exerciseFields}]})) {setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}
-  }
-  async function restore(f?: File) {
-    if (!f) return
-    try {
-      if (f.size > 10 * 1024 * 1024) throw new Error('10MB以下のJSONを選んでください。')
-      const next = parseBackup(JSON.parse(await f.text()))
-      if (window.confirm(`種目 ${next.exercises.length} 件、記録 ${next.workouts.length} 件と店舗・種目設定を復元します。現在のデータは置き換わります。先にバックアップを保存しましたか？`)) {
-        if (await commit(next)) {reset();setExerciseId('');setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}
-      }
-    } catch (e) {setMessage(e instanceof Error ? e.message : '復元できませんでした。')}
-    finally {if(file.current) file.current.value = ''}
-  }
-  async function backup() {
-    const file = new File([JSON.stringify(data, null, 2)], `myfitness-${today()}.json`, {type: 'application/json'})
-    const shareData = {files: [file]}
-    if (navigator.share && navigator.canShare?.(shareData)) {
-      setMessage('')
-      try {
-        await navigator.share(shareData)
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          setMessage('共有できませんでした。もう一度お試しください。')
-        }
-      }
+    const previous = data.exercises.find(row => row.id === editExercise)
+    const remainsCardio = exerciseFields !== undefined
+    const previousMode = previous && withRecordingMode(previous)
+    const sameKind = previousMode && (previousMode.recordingMode === 'cardio') === remainsCardio
+    if (previous && !sameKind && data.workouts.some(record => record.exerciseId === id)) {
+      setMessage('記録がある種目の種類は変更できません。')
       return
     }
-    downloadBackup(file)
-  }
-  function downloadBackup(file: File) {
-    const url = URL.createObjectURL(file)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.name
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 10000)
-    setMessage('ダウンロード先をご確認ください。')
+    const exercise = withRecordingMode({
+      ...previous, id, name: trimmed, settings: exerciseSettings, cardioFields: exerciseFields,
+      recordingMode: sameKind ? previousMode.recordingMode : undefined,
+      cardioMode: sameKind ? previousMode.cardioMode : undefined,
+    })
+    const exercises = previous ? data.exercises.map(row => row.id === id ? exercise : row) : [...data.exercises, exercise]
+    if (await commit({...data, exercises})) {
+      setName(''); setExerciseSettings(''); setExerciseFields(undefined); setEditExercise('')
+    }
   }
   const exercises = store ? availableExercises(data,store) : []
   const selectedExercise = (editing ? data.exercises : exercises).find(x => x.id === exerciseId)
@@ -137,17 +120,16 @@ export default function App() {
     setStore(value);setTab('record');reset();setExerciseId('');setWeight('')
   }
   const editedRecord = data.workouts.find(record=>record.id===editing)
-  const showCardio = editedRecord ? isCardio(editedRecord) : selectedExercise?.cardioFields !== undefined
+  const showCardio = editedRecord ? isCardio(editedRecord) : selectedExercise && withRecordingMode(selectedExercise).recordingMode === 'cardio'
   const bodyweight = !showCardio && isBodyweight(selectedExercise)
   const treadmill = isTreadmill(selectedExercise)
   const treadmillSettings = isTreadmill(data.exercises.find(row=>row.id===editExercise)) ||
-    (exerciseFields !== undefined && normalizeName(name)==='トレッドミル')
+    (!editExercise && exerciseFields !== undefined && normalizeName(name)==='トレッドミル')
   const climbmillSettings = isClimbmill(data.exercises.find(row=>row.id===editExercise)) ||
-    (exerciseFields !== undefined && normalizeName(name)==='クライムミル')
+    (!editExercise && exerciseFields !== undefined && normalizeName(name)==='クライムミル')
   const latest = selectedExercise && data.workouts.reduce<Workout | undefined>((previous, record) => {
     if (record.exerciseId !== selectedExercise.id) return previous
-    const time = (row: Workout) => row.trainedAt ?? new Date(row.date + 'T00:00:00').getTime()
-    return !previous || time(record) >= time(previous) ? record : previous
+    return !previous || workoutTime(record) >= workoutTime(previous) ? record : previous
   }, undefined)
   const previousSummary = latest && (isCardio(latest)
     ? cardioSummaryText(latest, treadmill, isClimbmill(selectedExercise)).replaceAll(' · ', '・')
@@ -164,7 +146,11 @@ export default function App() {
     <button className="primary" onClick={() => { dismissReminder(); setTab('backup') }}>バックアップへ</button>
     <button type="button" onClick={dismissReminder}>閉じる</button>
   </section>
-  const backupPanel = <><p className="eyebrow">KEEP YOUR PROGRESS</p><h2>バックアップと復元</h2><div className="card"><h3>大切な記録を、手元に。</h3><p>データはこのブラウザの端末内に保存されます。別端末とは同期しません。ブラウザのデータ削除や端末の変更に備え、定期的にJSONを保存してください。</p><button className="primary" onClick={backup}>JSONバックアップを保存</button><hr/><h3>バックアップから復元</h3><p>このアプリで保存したJSONを選択します。内容を確認後、現在の全データを置き換えます。</p><input ref={file} aria-label="復元するJSONファイル" type="file" accept=".json,application/json" onChange={e=>void restore(e.target.files?.[0])}/></div></>
+  const backupPanel = <BackupPanel data={data} commit={commit} today={today} setMessage={setMessage}
+    onRestored={next => {
+      if (store && store !== 'other' && !next.stores.some(row => row.id === store)) setStore(null)
+      reset(); setExerciseId(''); setName(''); setExerciseSettings(''); setExerciseFields(undefined); setEditExercise('')
+    }}/>
   if (!store && tab === 'backup') return <div className="app"><main>
     <button type="button" onClick={() => setTab('record')}>店舗選択に戻る</button>
     <p role="status" className="status">{message}</p>
@@ -242,22 +228,26 @@ export default function App() {
       {showCardio ? <CardioForm key={editing || selectedExercise.id} fields={selectedExercise.cardioFields ?? []} distanceOnly={treadmill} climbOnly={isClimbmill(selectedExercise)}
         record={editedRecord && isCardio(editedRecord) ? editedRecord : undefined}
         save={(minutes,metrics)=>saveWorkout({kind:'cardio',id:editing || newId(),exerciseId,date,
-          trainedAt:editedRecord?.date===date ? editedRecord.trainedAt : date===today() ? currentTime() : undefined,minutes,metrics})}
-        cancel={reset}/> : <form onSubmit={submit}>
-      {editing && <label>種目<select required value={exerciseId} onChange={e=>setExerciseId(e.target.value)}>
-        {data.exercises.filter(x=>x.cardioFields===undefined || x.id===exerciseId).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
-      </select></label>}{editing && !bodyweight && <p className="hint">過去の記録は現在の種目設定に関係なく編集できます。重量を直接入力してください。</p>}<div className="numbers">{!bodyweight && <label>重量 (kg)<input type="number" inputMode="decimal" min="0" max="2000" step="any" required value={weight} onChange={e=>setWeight(e.target.value)}/></label>}<label>回数<input type="number" inputMode="numeric" min="1" max="10000" required value={reps} onChange={e=>setReps(e.target.value)}/></label>{!bodyweight && <div className="set-counter" role="group" aria-label="セット数">
-        <span>セット数</span>
-        <div className="set-counter-controls">
-          <button type="button" aria-label="セット数を減らす" disabled={sets === 0} onClick={() => setSets(n => Math.max(0, n - 1))}>−</button>
-          <output aria-label="現在のセット数">{sets || '—'}</output>
-          <button type="button" aria-label="セット数を増やす" disabled={sets === 1000} onClick={() => setSets(n => Math.min(1000, n + 1))}>＋</button>
-        </div>
-      </div>}</div><button className="primary" disabled={(!bodyweight && !weight.trim()) || !reps.trim() || (!bodyweight && sets === 0)}>{busy?'保存中…':editing?'変更を保存':'＋ 記録を保存'}</button>{editing && <button type="button" onClick={reset}>編集をキャンセル</button>}</form>}
+          trainedAt:workoutTimestamp(editedRecord, date, today(), currentTime()),minutes,metrics})}
+        cancel={reset}/> : <StrengthForm submit={submit} editing={editing}
+        exerciseId={exerciseId} setExerciseId={setExerciseId} exercises={data.exercises}
+        bodyweight={bodyweight} weight={weight} setWeight={setWeight} reps={reps} setReps={setReps}
+        sets={sets} setSets={setSets} busy={busy} reset={reset}/>}
       </div>
       <ExerciseProgress key={selectedExercise.id} workouts={data.workouts} exercise={selectedExercise}/>
     </>}
-    <section className="entries"><h3>{date.replaceAll('-',' / ')} <span>{daily.length} 件</span></h3>{daily.length===0?<div className="empty"><div>＋</div><h3>この日の記録はまだありません</h3><p>あなたのペースで、最初の1セットから。</p></div>:daily.map(w=><article className="entry" key={w.id}><div><h3>{data.exercises.find(x=>x.id===w.exerciseId)?.name}</h3>{isCardio(w) ? <CardioSummary record={w} distanceOnly={isTreadmill(data.exercises.find(x=>x.id===w.exerciseId))} climbOnly={isClimbmill(data.exercises.find(x=>x.id===w.exerciseId))}/> : <p>{!isBodyweight(data.exercises.find(x=>x.id===w.exerciseId)) && <><strong>{w.weight}</strong> kg <span>×</span></>} <strong>{w.reps}</strong> 回 {!isBodyweight(data.exercises.find(x=>x.id===w.exerciseId)) && <><span>×</span> <strong>{w.sets}</strong> セット</>}</p>}</div><div className="actions"><button onClick={()=>{setEditing(w.id);setExerciseId(w.exerciseId);if(!isCardio(w)){setWeight(String(w.weight));setReps(String(w.reps));setSets(w.sets)}setTab('record');window.scrollTo({top:0,behavior:'smooth'})}}>編集</button><button className="danger" onClick={async()=>{if(confirm('この記録を削除しますか？')) if(await commit({...data,workouts:data.workouts.filter(x=>x.id!==w.id)})) reset()}}>削除</button></div></article>)}</section></>}
+    <WorkoutHistory date={date} daily={daily} exercises={data.exercises}
+      edit={record => {
+        setEditing(record.id); setExerciseId(record.exerciseId)
+        if (!isCardio(record)) {
+          setWeight(String(record.weight)); setReps(String(record.reps)); setSets(record.sets)
+        }
+        setTab('record')
+        window.scrollTo({top:0, behavior:'smooth'})
+      }}
+      remove={async id => {
+        if (confirm('この記録を削除しますか？') && await commit(updateWorkout(data, id))) reset()
+      }}/></>}
     {tab==='exercises' && <><p className="eyebrow">EXERCISE LIBRARY</p><h2>共通の種目を管理</h2><p className="hint">同じ種目はここで1度だけ登録し、各店舗に登録してください。種目名の変更は全店舗と履歴に反映されます。</p><form className="card" onSubmit={submitExercise}><label>種目名<input required maxLength={80} placeholder="例：ベンチプレス" value={name} onChange={e=>setName(e.target.value)}/></label><label>種目の種類<select value={exerciseFields === undefined ? 'strength' : 'cardio'}
       onChange={e=>setExerciseFields(e.target.value==='cardio' ? [] : undefined)}>
       <option value="strength">筋トレ</option><option value="cardio">有酸素運動</option>
