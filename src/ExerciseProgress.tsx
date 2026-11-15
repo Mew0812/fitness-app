@@ -23,9 +23,14 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
       const value = isCardio(record)
         ? climb ? record.metrics[climbMetric] : treadmill ? record.metrics.distance : record.minutes
         : cardio ? undefined : bodyweight ? record.reps : record.weight * record.reps * record.sets
-      const detail = !isCardio(record) && !bodyweight && value !== undefined
-        ? [format.format(record.weight) + ' kg', record.reps + ' 回', record.sets + ' セット'].join(' × ') + ' ＝ ' + format.format(value) + 'ポイント'
-        : value === undefined ? '未記録' : format.format(value) + ' ' + unit
+      const detail = isCardio(record) && climb
+        ? ([['floors', '階'], ['steps', 'ステップ']] as const).flatMap(([key, metricUnit]) => {
+          const metric = record.metrics[key]
+          return metric === undefined ? [] : [format.format(metric) + ' ' + metricUnit]
+        }).join(' · ') || '未記録'
+        : !isCardio(record) && !bodyweight && value !== undefined
+          ? [format.format(record.weight) + ' kg', record.reps + ' 回', record.sets + ' セット'].join(' × ')
+          : value === undefined ? '未記録' : format.format(value) + ' ' + unit
       return {record, number: index + 1, value, detail}
     })
   const lastPage = Math.max(0, Math.ceil(attempts.length / pageSize) - 1)
@@ -33,6 +38,8 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
   const visible = attempts.slice(page * pageSize, (page + 1) * pageSize)
   const max = attempts.reduce((highest, point) => Math.max(highest, point.value ?? 0), 0)
   const selected = visible.find(point => point.record.id === selectedId && point.value !== undefined)
+  const recent = attempts.slice(-3).reverse()
+  const olderSelected = selected && !recent.some(point => point.record.id === selected.record.id) ? selected : undefined
   const points = visible.map((point, index) => ({
     ...point,
     x: (index + 0.5) / visible.length * 100,
@@ -79,7 +86,14 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
         <span>{visible[0].number}〜{visible.at(-1)?.number} / {attempts.length}回</span>
         <button type="button" disabled={page === lastPage} onClick={() => setPage(page + 1)}>次の記録</button>
       </div>}
-      <p role="status">{selected ? selected.number + '回目 · ' + selected.record.date + ' · ' + selected.detail : '点をタップすると記録の詳細が表示されます。'}</p>
+      <ul className="growth-recent" aria-label="直近の記録">
+        {recent.map(point => <li key={point.record.id}>
+          {point.number}回目 · {point.record.date} · {point.detail}
+        </li>)}
+      </ul>
+      <div role="status">{olderSelected && <p>
+        選択した記録：{olderSelected.number}回目 · {olderSelected.record.date} · {olderSelected.detail}
+      </p>}</div>
     </>}
   </section>
 }

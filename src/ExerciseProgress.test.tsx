@@ -16,11 +16,11 @@ it('同日記録を保存順で数え、追加・編集・削除に追従する'
   expect(container.querySelector('.growth-line')?.getAttribute('d')).not.toContain('L')
   rerender(<ExerciseProgress exercise={exercise} workouts={[first,second,{...first,id:'other',exerciseId:'other'}]}/>)
   expect(container.querySelector('.growth-line')?.getAttribute('d')).toContain('L')
-  fireEvent.click(screen.getByRole('button',{name:/2回目.*768ポイント/}))
-  expect(screen.getByRole('status').textContent).toContain('32 kg × 8 回 × 3 セット')
+  fireEvent.click(screen.getByRole('button',{name:/2回目.*32 kg/}))
+  expect(screen.getByText('2回目 · 2026-11-14 · 32 kg × 8 回 × 3 セット')).toBeTruthy()
   rerender(<ExerciseProgress exercise={exercise} workouts={[{...second,weight:35,reps:10}]}/>)
-  expect(screen.getByRole('button',{name:/1回目.*1,050ポイント/})).toBeTruthy()
-  expect(screen.queryByText(/前回記録|自己ベスト/)).toBeNull()
+  expect(screen.getByRole('button',{name:/1回目.*35 kg/})).toBeTruthy()
+  expect(screen.getByText('1,050')).toBeTruthy()
 })
 
 it('自重は回数、トレッドミルは距離で表示する',()=>{
@@ -35,7 +35,7 @@ it('クライムミルの欠損を0に変えず系列を切り替える',()=>{
   const base={kind:'cardio' as const,exerciseId:'bench',date:first.date}
   const {container}=render(<ExerciseProgress exercise={{...exercise,name:'クライムミル',cardioFields:['floors','steps']}}
     workouts={[{...base,id:'1',metrics:{floors:50}},{...base,id:'2',metrics:{steps:1200}},{...base,id:'3',metrics:{floors:0,steps:500}}]}/>)
-  expect(screen.getByRole('button',{name:'3回目 0 階'})).toBeTruthy()
+  expect(screen.getByRole('button',{name:'3回目 0 階 · 500 ステップ'})).toBeTruthy()
   expect(screen.queryByRole('button',{name:/2回目/})).toBeNull()
   expect(container.querySelector('.growth-line')?.getAttribute('d')).not.toContain('L')
   fireEvent.change(screen.getByLabelText('表示する項目'),{target:{value:'steps'}})
@@ -50,4 +50,17 @@ it('多数の記録は挑戦番号を維持して前後に移動できる',()=>{
   expect(graph.getByRole('button',{name:/17回目/})).toBeTruthy()
   fireEvent.click(graph.getByRole('button',{name:'前の記録'}))
   expect(graph.getByRole('button',{name:/9回目/})).toBeTruthy()
+})
+
+it('直近3件を最新順で保ち、古い点の詳細だけを別に表示する',()=>{
+  render(<ExerciseProgress exercise={exercise} workouts={[first, second, {...first,id:'3'}, {...first,id:'4'}]}/>)
+  const list=screen.getByRole('list',{name:'直近の記録'})
+  expect(within(list).getAllByRole('listitem').map(row=>row.textContent?.trim().slice(0,3))).toEqual(['4回目','3回目','2回目'])
+  const old=screen.getByRole('button',{name:/^1回目/})
+  fireEvent.click(old)
+  expect(old.getAttribute('aria-pressed')).toBe('true')
+  expect(screen.getByRole('status').textContent).toContain('1回目 · 2026-11-14 · 30 kg × 10 回 × 3 セット')
+  expect(within(list).getAllByRole('listitem')).toHaveLength(3)
+  expect(list.textContent).not.toContain('ポイント')
+  expect(screen.getByText('トレーニング量（ポイント）')).toBeTruthy()
 })

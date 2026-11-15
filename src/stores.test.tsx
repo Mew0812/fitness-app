@@ -45,7 +45,7 @@ describe('店舗の選択と統合',()=>{
  expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
  await u.type(screen.getByLabelText('重量 (kg)'),'30');await u.type(screen.getByLabelText('回数'),'10');await u.click(screen.getByRole('button',{name:'セット数を増やす'}));await u.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
  await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(3))
- expect(screen.getByText('前回の記録：30kg × 10回 × 1セット')).toBeTruthy(); expect(screen.getByRole('button',{name:/3回目.*30 kg.*300ポイント/})).toBeTruthy(); const d=await loadData();expect(d.workouts.map(w=>w.exerciseId)).toEqual(['bench','bench','bench']);expect(d.workouts[0]).toEqual(fixture().workouts[0])
+ expect(screen.getByText('前回の記録：30kg × 10回 × 1セット')).toBeTruthy(); expect(screen.getByRole('button',{name:/3回目.*30 kg.*1 セット/})).toBeTruthy(); const d=await loadData();expect(d.workouts.map(w=>w.exerciseId)).toEqual(['bench','bench','bench']);expect(d.workouts[0]).toEqual(fixture().workouts[0])
  await u.selectOptions(screen.getByLabelText('利用店舗'),'other');await u.click(screen.getByRole('button',{name:'ベンチプレス'}))
  expect(screen.queryByLabelText('器具')).toBeNull()
  expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()

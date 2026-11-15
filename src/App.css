@@ -123,3 +123,6 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 .section-head.workout-heading { justify-content: flex-start; gap: 4px 12px; }
 .workout-heading > label { flex: 0 1 auto; }
 .workout-card .previous-workout { margin: 0 0 12px; }
+
+.growth-recent { list-style: none; padding: 0; margin: 12px 0 0; font-size: 14px; }
+.growth-recent li { padding-block: 4px; overflow-wrap: anywhere; }
