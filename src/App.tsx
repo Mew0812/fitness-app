@@ -23,6 +23,27 @@ export default function App() {
   const [ready, setReady] = useState(false)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
+  const [reminderMonth, setReminderMonth] = useState('')
+  useEffect(() => {
+    const check = () => {
+      if (document.visibilityState === 'hidden') return
+      const now = new Date()
+      const month = today().slice(0, 7)
+      const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+      if (now.getDate() !== lastDay) { setReminderMonth(''); return }
+      try {
+        if (localStorage.getItem('myfitness-backup-reminder') === month) return
+      } catch { /* The reminder still works when storage is unavailable. */ }
+      setReminderMonth(month)
+    }
+    check()
+    document.addEventListener('visibilitychange', check)
+    window.addEventListener('pageshow', check)
+    return () => {
+      document.removeEventListener('visibilitychange', check)
+      window.removeEventListener('pageshow', check)
+    }
+  }, [])
   const [tab, setTab] = useState('record')
   const [date, setDate] = useState(today)
   const [name, setName] = useState('')
@@ -84,10 +105,30 @@ export default function App() {
     } catch (e) {setMessage(e instanceof Error ? e.message : '復元できませんでした。')}
     finally {if(file.current) file.current.value = ''}
   }
-  function backup() {
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data,null,2)],{type:'application/json'}))
-    const a = document.createElement('a'); a.href = url; a.download = `myfitness-${today()}.json`; a.click(); setTimeout(() => URL.revokeObjectURL(url),10000)
-    setMessage('バックアップを書き出しました。ダウンロード先をご確認ください。')
+  async function backup() {
+    const file = new File([JSON.stringify(data, null, 2)], `myfitness-${today()}.json`, {type: 'application/json'})
+    const shareData = {files: [file]}
+    if (navigator.share && navigator.canShare?.(shareData)) {
+      setMessage('')
+      try {
+        await navigator.share(shareData)
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          setMessage('共有できませんでした。「JSONをダウンロード」をお試しください。')
+        }
+      }
+      return
+    }
+    downloadBackup(file)
+  }
+  function downloadBackup(file = new File([JSON.stringify(data, null, 2)], `myfitness-${today()}.json`, {type: 'application/json'})) {
+    const url = URL.createObjectURL(file)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.name
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10000)
+    setMessage('ダウンロード先をご確認ください。')
   }
   const exercises = store ? availableExercises(data,store) : []
   const selectedExercise = (editing ? data.exercises : exercises).find(x => x.id === exerciseId)
@@ -114,7 +155,22 @@ export default function App() {
       : `${latest.weight}kg × ${latest.reps}回 × ${latest.sets}セット`)
   const daily = data.workouts.filter(w => w.date === date)
   const dates = [...new Set(data.workouts.map(w => w.date))].sort().reverse()
-  if (!store) return <div className="app"><main>{(message || !ready) && <p role="status" className="status">{message || 'データを読み込み中…'}</p>}<fieldset className="workspace store-grid" disabled={!ready || busy}>{data.stores.map(s=><button key={s.id} onClick={()=>chooseStore(s.id)}>{s.name}{s.note && <span>{s.note}</span>}</button>)}<button onClick={()=>chooseStore('other')}>その他<span>全店舗の種目</span></button></fieldset>
+  function dismissReminder() {
+    try { localStorage.setItem('myfitness-backup-reminder', reminderMonth) } catch { /* Keep dismissal for this session. */ }
+    setReminderMonth('')
+  }
+  const reminder = ready && reminderMonth && tab !== 'backup' && <section className="card" aria-label="月末のバックアップ">
+    <p>月末です。トレーニング記録のバックアップを保存しましょう。</p>
+    <button className="primary" onClick={() => { dismissReminder(); setTab('backup') }}>バックアップへ</button>
+    <button type="button" onClick={dismissReminder}>閉じる</button>
+  </section>
+  const backupPanel = <><p className="eyebrow">KEEP YOUR PROGRESS</p><h2>バックアップと復元</h2><div className="card"><h3>大切な記録を、手元に。</h3><p>データはこのブラウザの端末内に保存されます。別端末とは同期しません。ブラウザのデータ削除や端末の変更に備え、定期的にJSONを保存してください。</p><button className="primary" onClick={backup}>JSONバックアップを保存</button><button type="button" onClick={() => downloadBackup()}>JSONをダウンロード</button><hr/><h3>バックアップから復元</h3><p>このアプリで保存したJSONを選択します。内容を確認後、現在の全データを置き換えます。</p><input ref={file} aria-label="復元するJSONファイル" type="file" accept=".json,application/json" onChange={e=>void restore(e.target.files?.[0])}/></div></>
+  if (!store && tab === 'backup') return <div className="app"><main>
+    <button type="button" onClick={() => setTab('record')}>店舗選択に戻る</button>
+    <p role="status" className="status">{message}</p>
+    <fieldset className="workspace" disabled={busy || !ready}>{backupPanel}</fieldset>
+  </main></div>
+  if (!store) return <div className="app"><main>{reminder}{(message || !ready) && <p role="status" className="status">{message || 'データを読み込み中…'}</p>}<fieldset className="workspace store-grid" disabled={!ready || busy}>{data.stores.map(s=><button key={s.id} onClick={()=>chooseStore(s.id)}>{s.name}{s.note && <span>{s.note}</span>}</button>)}<button onClick={()=>chooseStore('other')}>その他<span>全店舗の種目</span></button></fieldset>
     <div className="store-add">
       {addingStore ? <form className="card" onSubmit={async event=>{
         event.preventDefault()
@@ -137,7 +193,7 @@ export default function App() {
       </form> : <button disabled={!ready || busy} onClick={()=>setAddingStore(true)}>＋ 新しい店舗を追加</button>}
     </div></main></div>
   return <div className="app">
-    <main>
+    <main>{reminder}
     <label className="store-switch">利用店舗<select aria-label="利用店舗" value={store} disabled={busy} onChange={e=>{if(!editing || confirm('店舗を切り替えると編集中の入力は破棄されます。切り替えますか？')) chooseStore(e.target.value as StoreChoice)}}>{data.stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="other">その他（全店舗の種目）</option></select></label>
     <nav className="main-menu" aria-label="メインメニュー">
       {([['record','記録する']] as const).map(([id,label]) =>
@@ -214,6 +270,6 @@ export default function App() {
     </fieldset>}
     <label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label><button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{x.name}</h3><details className="exercise-management"><summary>共通設定</summary><ExerciseSettings exercise={x} data={data} commit={commit}/></details><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setExerciseFields(x.cardioFields);setEditExercise(x.id)}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count || data.legacySettings.some(e=>e.exerciseId===x.id)){setMessage('記録または旧設定がある種目は削除できません。店舗からの登録解除は「店舗設定」で行えます。');return}if(confirm(`「${x.name}」を削除しますか？関連する記録 ${count} 件と全店舗の種目設定も削除されます。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),workouts:data.workouts.filter(w=>w.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
     {tab==='stores' && <StoreSettings data={data} commit={commit} onDelete={id=>{if(store===id){setStore(null);reset();setExerciseId('')}}}/>}
-    {tab==='backup' && <><p className="eyebrow">KEEP YOUR PROGRESS</p><h2>バックアップと復元</h2><div className="card"><h3>大切な記録を、手元に。</h3><p>データはこのブラウザの端末内に保存されます。別端末とは同期しません。ブラウザのデータ削除や端末の変更に備え、定期的にJSONを保存してください。</p><button className="primary" onClick={backup}>JSONバックアップを保存</button><hr/><h3>バックアップから復元</h3><p>このアプリで保存したJSONを選択します。内容を確認後、現在の全データを置き換えます。</p><input ref={file} aria-label="復元するJSONファイル" type="file" accept=".json,application/json" onChange={e=>void restore(e.target.files?.[0])}/></div></>}
+    {tab==='backup' && backupPanel}
     </fieldset><footer>自分と向き合う時間を、少しずつ。<br/><span>MY FITNESS · 食事・体重・グラフは今後追加予定</span></footer></main></div>
 }
