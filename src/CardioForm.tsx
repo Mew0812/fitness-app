@@ -1,14 +1,10 @@
 import {useState} from 'react'
 import {cardioFields} from './data'
+import {cardioSummaryText} from './cardioSummary'
 import type {CardioField, CardioWorkout} from './data'
 
 export function CardioSummary({record, distanceOnly = false, climbOnly = false}: {record: CardioWorkout; distanceOnly?: boolean; climbOnly?: boolean}) {
-  if (distanceOnly || (record.minutes === undefined && record.metrics.distance !== undefined && !climbOnly)) return <p>{record.metrics.distance === undefined ? '走行距離は未記録です。' : record.metrics.distance + 'km'}</p>
-  const details = cardioFields.filter(({key})=>!climbOnly || key==='floors' || key==='steps').flatMap(({key,unit}) => {
-    const value = record.metrics[key]
-    return value === undefined ? [] : [key === 'incline' ? '傾斜' + value + unit : value.toLocaleString('ja-JP',{maximumFractionDigits:20}) + unit]
-  })
-  return <p>{[...(!climbOnly && record.minutes !== undefined ? [record.minutes + '分'] : []), ...details].join(' · ') || '階数・ステップ数は未記録です。'}</p>
+  return <p>{cardioSummaryText(record, distanceOnly, climbOnly)}</p>
 }
 
 export function CardioForm({fields,record,save,cancel,distanceOnly = false,climbOnly = false}: {

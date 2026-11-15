@@ -7,6 +7,7 @@ import ExerciseProgress from './ExerciseProgress'
 import ExerciseGrid from './ExerciseGrid'
 import ExerciseGuide from './ExerciseGuide'
 import { CardioForm, CardioSummary } from './CardioForm'
+import { cardioSummaryText } from './cardioSummary'
 import type { Data, Workout, StoreChoice, CardioField } from './data'
 import './App.css'
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
@@ -102,6 +103,15 @@ export default function App() {
     (exerciseFields !== undefined && normalizeName(name)==='トレッドミル')
   const climbmillSettings = isClimbmill(data.exercises.find(row=>row.id===editExercise)) ||
     (exerciseFields !== undefined && normalizeName(name)==='クライムミル')
+  const latest = selectedExercise && data.workouts.reduce<Workout | undefined>((previous, record) => {
+    if (record.exerciseId !== selectedExercise.id) return previous
+    const time = (row: Workout) => row.trainedAt ?? new Date(row.date + 'T00:00:00').getTime()
+    return !previous || time(record) >= time(previous) ? record : previous
+  }, undefined)
+  const previousSummary = latest && (isCardio(latest)
+    ? cardioSummaryText(latest, treadmill, isClimbmill(selectedExercise)).replaceAll(' · ', '・')
+    : isBodyweight(selectedExercise) ? latest.reps + '回'
+      : `${latest.weight}kg × ${latest.reps}回 × ${latest.sets}セット`)
   const daily = data.workouts.filter(w => w.date === date)
   const dates = [...new Set(data.workouts.map(w => w.date))].sort().reverse()
   if (!store) return <div className="app"><main>{(message || !ready) && <p role="status" className="status">{message || 'データを読み込み中…'}</p>}<fieldset className="workspace store-grid" disabled={!ready || busy}>{data.stores.map(s=><button key={s.id} onClick={()=>chooseStore(s.id)}>{s.name}{s.note && <span>{s.note}</span>}</button>)}<button onClick={()=>chooseStore('other')}>その他<span>全店舗の種目</span></button></fieldset>
@@ -162,7 +172,7 @@ export default function App() {
       <ExerciseGrid exercises={exercises} workouts={data.workouts} select={id => {setExerciseId(id);setWeight('')}}/>
       {!exercises.length && <p>「店舗設定」で種目を登録してください。</p>}
     </section>}
-    {((tab==='record' && selectedExercise)||tab==='history') && <><div className="section-head"><div><p className="eyebrow">{tab==='record'?'WORKOUT LOG':'YOUR HISTORY'}</p><h2>{tab==='record'?'トレーニングを記録':'日付別の履歴'}</h2></div><label>日付<input aria-label="記録の日付" type="date" required value={date} onChange={e=>{setDate(e.target.value);if(!editing) reset()}}/></label></div>
+    {((tab==='record' && selectedExercise)||tab==='history') && <><div className={tab === 'record' ? 'section-head workout-heading' : 'section-head'}><div><p className="eyebrow">{tab==='record'?'WORKOUT LOG':'YOUR HISTORY'}</p><h2>{tab==='record'?'トレーニングを記録':'日付別の履歴'}</h2></div><label>日付<input aria-label="記録の日付" type="date" required value={date} onChange={e=>{setDate(e.target.value);if(!editing) reset()}}/></label></div>
     {tab==='history' && <div className="date-list">{dates.map(d=><button key={d} onClick={()=>{setDate(d);reset()}} className={date===d?'selected':''}>{d}</button>)}</div>}
     {tab==='record' && selectedExercise && <>
       <button onClick={() => { reset(); setExerciseId('') }}>種目選択に戻る</button>
@@ -172,6 +182,7 @@ export default function App() {
         <p><strong>共通設定</strong> {selectedExercise.settings || '設定は未登録です。'}</p>
         <ExerciseGuide name={selectedExercise.name}/>
       </section>
+      <p className="previous-workout">{previousSummary ? `前回の記録：${previousSummary}` : '前回の記録はありません'}</p>
       {showCardio ? <CardioForm key={editing || selectedExercise.id} fields={selectedExercise.cardioFields ?? []} distanceOnly={treadmill} climbOnly={isClimbmill(selectedExercise)}
         record={editedRecord && isCardio(editedRecord) ? editedRecord : undefined}
         save={(minutes,metrics)=>saveWorkout({kind:'cardio',id:editing || newId(),exerciseId,date,
@@ -186,7 +197,7 @@ export default function App() {
           <output aria-label="現在のセット数">{sets || '—'}</output>
           <button type="button" aria-label="セット数を増やす" disabled={sets === 1000} onClick={() => setSets(n => Math.min(1000, n + 1))}>＋</button>
         </div>
-      </div>}</div>{!bodyweight && <p className="hint">自重トレーニングは 0 kg で記録できます。</p>}<button className="primary" disabled={(!bodyweight && !weight.trim()) || !reps.trim() || (!bodyweight && sets === 0)}>{busy?'保存中…':editing?'変更を保存':'＋ 記録を保存'}</button>{editing && <button type="button" onClick={reset}>編集をキャンセル</button>}</form>}
+      </div>}</div><button className="primary" disabled={(!bodyweight && !weight.trim()) || !reps.trim() || (!bodyweight && sets === 0)}>{busy?'保存中…':editing?'変更を保存':'＋ 記録を保存'}</button>{editing && <button type="button" onClick={reset}>編集をキャンセル</button>}</form>}
       </div>
       <ExerciseProgress key={selectedExercise.id} workouts={data.workouts} exercise={selectedExercise}/>
     </>}

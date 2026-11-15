@@ -16,10 +16,10 @@ it('同日記録を保存順で数え、追加・編集・削除に追従する'
   expect(container.querySelector('.growth-line')?.getAttribute('d')).not.toContain('L')
   rerender(<ExerciseProgress exercise={exercise} workouts={[first,second,{...first,id:'other',exerciseId:'other'}]}/>)
   expect(container.querySelector('.growth-line')?.getAttribute('d')).toContain('L')
-  fireEvent.click(screen.getByRole('button',{name:/2回目.*768 kg/}))
+  fireEvent.click(screen.getByRole('button',{name:/2回目.*768ポイント/}))
   expect(screen.getByRole('status').textContent).toContain('32 kg × 8 回 × 3 セット')
   rerender(<ExerciseProgress exercise={exercise} workouts={[{...second,weight:35,reps:10}]}/>)
-  expect(screen.getByRole('button',{name:/1回目.*1,050 kg/})).toBeTruthy()
+  expect(screen.getByRole('button',{name:/1回目.*1,050ポイント/})).toBeTruthy()
   expect(screen.queryByText(/前回記録|自己ベスト/)).toBeNull()
 })
 

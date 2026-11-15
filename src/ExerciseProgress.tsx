@@ -14,7 +14,7 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
   const treadmill = isTreadmill(exercise)
   const bodyweight = isBodyweight(exercise)
   const cardio = exercise.cardioFields !== undefined
-  const unit = climb ? (climbMetric === 'floors' ? '階' : 'ステップ') : treadmill ? 'km' : cardio ? '分' : bodyweight ? '回' : 'kg'
+  const unit = climb ? (climbMetric === 'floors' ? '階' : 'ステップ') : treadmill ? 'km' : cardio ? '分' : bodyweight ? '回' : 'ポイント'
   const label = climb ? (climbMetric === 'floors' ? '登った階数' : 'ステップ数') : treadmill ? '走行距離' : cardio ? '運動時間' : bodyweight ? '回数' : 'トレーニング量'
 
   const attempts = workouts.filter(record => record.exerciseId === exercise.id)
@@ -24,7 +24,7 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
         ? climb ? record.metrics[climbMetric] : treadmill ? record.metrics.distance : record.minutes
         : cardio ? undefined : bodyweight ? record.reps : record.weight * record.reps * record.sets
       const detail = !isCardio(record) && !bodyweight && value !== undefined
-        ? [format.format(record.weight) + ' kg', record.reps + ' 回', record.sets + ' セット'].join(' × ') + ' ＝ ' + format.format(value) + ' kg'
+        ? [format.format(record.weight) + ' kg', record.reps + ' 回', record.sets + ' セット'].join(' × ') + ' ＝ ' + format.format(value) + 'ポイント'
         : value === undefined ? '未記録' : format.format(value) + ' ' + unit
       return {record, number: index + 1, value, detail}
     })
@@ -80,7 +80,6 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
         <button type="button" disabled={page === lastPage} onClick={() => setPage(page + 1)}>次の記録</button>
       </div>}
       <p role="status">{selected ? selected.number + '回目 · ' + selected.record.date + ' · ' + selected.detail : '点をタップすると記録の詳細が表示されます。'}</p>
-      {!cardio && !bodyweight && <p className="hint">トレーニング量は重量 × 回数 × セット数で、筋力を直接測定する値ではありません。</p>}
     </>}
   </section>
 }

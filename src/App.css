@@ -119,3 +119,7 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
   object-fit: contain;
 }
 .exercise-guide-dialog button { margin-bottom: 4px; }
+
+.section-head.workout-heading { justify-content: flex-start; gap: 4px 12px; }
+.workout-heading > label { flex: 0 1 auto; }
+.workout-card .previous-workout { margin: 0 0 12px; }
