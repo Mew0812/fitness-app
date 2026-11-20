@@ -60,7 +60,6 @@ export default function App() {
   const [weight, setWeight] = useState('')
   const [reps, setReps] = useState('')
   const [sets, setSets] = useState(0)
-  const settingsMenu = useRef<HTMLDetailsElement>(null)
   const exerciseForm = useRef<HTMLFormElement>(null)
   useEffect(() => { loadData().then(d => {setData(d); setReady(true)}).catch(() => setMessage('データを読み込めません。Safariの通常モードで再読み込みしてください。')) }, [])
   async function commit(next: Data) {
@@ -125,7 +124,6 @@ export default function App() {
   const exercises = store ? availableExercises(data,store) : []
   const selectedExercise = (editing ? data.exercises : exercises).find(x => x.id === exerciseId)
   function chooseStore(value: StoreChoice) {
-    if (settingsMenu.current) settingsMenu.current.open = false
     setStore(value);setTab('record');reset();setExerciseId('');setWeight('')
   }
   const editedRecord = data.workouts.find(record=>record.id===editing)
@@ -190,34 +188,30 @@ export default function App() {
     </div></main></div>
   return <div className="app">
     <main>{!recordingScreen && reminder}
-    {!recordingScreen && <><label className="store-switch">利用店舗<select aria-label="利用店舗" value={store} disabled={busy} onChange={e=>{if(!editing || confirm('店舗を切り替えると編集中の入力は破棄されます。切り替えますか？')) chooseStore(e.target.value as StoreChoice)}}>{data.stores.map(s=><option key={s.id} value={s.id}>{s.name}</option>)}<option value="other">その他（全店舗の種目）</option></select></label>
-    <nav className="main-menu" aria-label="メインメニュー">
-      {([['record','記録する']] as const).map(([id,label]) =>
-        <button key={id} className={tab === id ? 'active' : ''} aria-current={tab === id ? 'page' : undefined}
-          onClick={() => { if (settingsMenu.current) settingsMenu.current.open = false; setTab(id) }}>{label}</button>
-      )}
-      <details className="settings-menu" ref={settingsMenu} onKeyDown={event => {
-        if (event.key === 'Escape' && event.currentTarget.open) {
-          event.currentTarget.open = false
-          event.currentTarget.querySelector('summary')?.focus()
-        }
-      }}>
-        <summary aria-label="設定メニュー" className={['history','exercises','stores','backup'].includes(tab) ? 'active' : ''}>
-          <span aria-hidden="true">⚙</span>
-        </summary>
-        <div className="settings-panel">
-          {([['history','履歴'],['exercises','種目の管理'],['stores','店舗設定'],['backup','バックアップ・復元']] as const).map(([id,label]) =>
-            <button key={id} aria-current={tab === id ? 'page' : undefined} onClick={() => {
-              if (settingsMenu.current) {
-                settingsMenu.current.open = false
-                settingsMenu.current.querySelector('summary')?.focus()
-              }
-              setTab(id)
-            }}>{label}</button>
-          )}
-        </div>
-      </details>
-    </nav></>}
+    {!recordingScreen && <>
+      <div className="store-switch">
+        <select aria-label="店舗を選択" value={store} disabled={busy} onChange={event => {
+          if (event.target.value === '__settings__') {
+            setTab('settings')
+            return
+          }
+          chooseStore(event.target.value)
+        }}>
+          {data.stores.map(row => <option key={row.id} value={row.id}>{row.name}</option>)}
+          <option value="other">その他（全店舗の種目）</option>
+          <optgroup label="────────"><option value="__settings__">設定</option></optgroup>
+        </select>
+      </div>
+      {tab !== 'record' && <button type="button" onClick={() => {
+        reset()
+        setExerciseId('')
+        setTab('record')
+      }}>種目一覧に戻る</button>}
+      {tab === 'settings' && <nav className="settings-links" aria-label="設定メニュー">
+        {([['history','履歴'],['exercises','種目の管理'],['stores','店舗設定'],['backup','バックアップ・復元']] as const)
+          .map(([id,label]) => <button key={id} type="button" onClick={() => setTab(id)}>{label}</button>)}
+      </nav>}
+    </>}
     {!recordingScreen && <p role="status" className="status">{tab === 'record' && !selectedExercise && message === '端末に保存しました。' ? '' : message}</p>}
     <fieldset disabled={!ready || busy} className="workspace">
     {tab === 'record' && !selectedExercise && <section>

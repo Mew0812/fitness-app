@@ -16,12 +16,12 @@ afterEach(()=>{cleanup();vi.restoreAllMocks()})
 beforeEach(async()=>{Object.defineProperty(Element.prototype,'scrollIntoView',{configurable:true,value:vi.fn()});await saveData(fixture());vi.spyOn(window,'confirm').mockReturnValue(true);vi.spyOn(window,'scrollTo').mockImplementation(()=>{})})
 async function launch() {render(<App/>);await waitFor(()=>expect(screen.getByRole('button',{name:'A店'}).matches(':disabled')).toBe(false))}
 async function switchStore(user: ReturnType<typeof userEvent.setup>, store: string) {
- if (!screen.queryByLabelText('利用店舗')) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
- await user.selectOptions(screen.getByLabelText('利用店舗'),store)
+ if (!screen.queryByLabelText('店舗を選択')) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+ await user.selectOptions(screen.getByLabelText('店舗を選択'),store)
 }
 async function openSettings(user: ReturnType<typeof userEvent.setup>, name: string) {
- if (!screen.queryByLabelText('設定メニュー')) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
- await user.click(screen.getByLabelText('設定メニュー'))
+ if (!screen.queryByLabelText('店舗を選択')) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+ await user.selectOptions(screen.getByLabelText('店舗を選択'),'__settings__')
  await user.click(screen.getByRole('button',{name}))
 }
 async function openBenchManagement(user: ReturnType<typeof userEvent.setup>) {
@@ -56,12 +56,12 @@ describe('店舗の選択と統合',()=>{
  expect(screen.getByRole('spinbutton',{name:'重量 (kg)'})).toBeTruthy()
  expect(screen.getByRole('region',{name:'保存済みの設定'}).textContent).toContain('座面：4')
  await openSettings(u,'履歴');expect(screen.getAllByRole('article')).toHaveLength(2)
- cleanup();await launch();expect(screen.queryByLabelText('利用店舗')).toBeNull()
+ cleanup();await launch();expect(screen.queryByLabelText('店舗を選択')).toBeNull()
  })
  it('店舗種目の追加・設定保存・編集・削除でも履歴を維持する',async()=>{
  const u=userEvent.setup();await launch();await u.click(screen.getByRole('button',{name:'A店'}));await openSettings(u,'店舗設定')
  await u.clear(screen.getByLabelText('店舗名'));await u.type(screen.getByLabelText('店舗名'),'自宅ジム');await u.click(screen.getByRole('button',{name:'店舗情報を保存'}))
- await waitFor(()=>expect(within(screen.getByLabelText('利用店舗')).getByRole('option',{name:'自宅ジム'})).toBeTruthy())
+ await waitFor(()=>expect(within(screen.getByLabelText('店舗を選択')).getByRole('option',{name:'自宅ジム'})).toBeTruthy())
  await u.selectOptions(screen.getByLabelText('共通の種目'),'squat')
  await u.click(screen.getByRole('button',{name:'店舗に種目を登録'}));await waitFor(async()=>expect((await loadData()).storeExercises).toHaveLength(5))
  const article=screen.getAllByRole('article').find(x=>x.textContent?.includes('スクワット'))!
@@ -149,7 +149,7 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await user.type(screen.getByLabelText('一言情報'),'駅から徒歩2分')
  await user.click(screen.getByRole('button',{name:'店舗情報を保存'}))
  await waitFor(async () => expect((await loadData()).stores[0].note).toBe('駅から徒歩2分'))
- await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
  cleanup()
  render(<App/>)
  const renamedStore = await screen.findByRole('button',{name:/A店.*駅から徒歩2分/})
@@ -163,7 +163,7 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await user.type(settingEditor,'グリップ：内側')
  await user.click(screen.getByRole('button',{name:'共通設定を保存'}))
  await waitFor(async () => expect((await loadData()).exercises[0].settings).toBe('グリップ：内側'))
- await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
  if(screen.queryByRole('button',{name:'種目選択に戻る'})) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
  expect(screen.queryByText('端末に保存しました。')).toBeNull()
  expect(screen.queryByRole('button',{name:'店舗選択に戻る'})).toBeNull()
@@ -288,7 +288,7 @@ it('種目登録と編集で複数行の設定を保存し、全店舗の記録�
  await user.type(field,'座面：6\n背もたれ：2')
  await user.click(screen.getByRole('button',{name:'種目設定を保存'}))
  await waitFor(async()=>expect((await loadData()).exercises[0].settings).toBe('座面：6\n背もたれ：2'))
- await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
  for (const store of ['a','b','c','other']) {
    await switchStore(user,store)
    await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
@@ -325,7 +325,7 @@ it('追加店舗の編集・割り当て・削除と、有酸素運動の共通�
    await user.click(screen.getByRole('button',{name:'店舗に種目を登録'}))
    await waitFor(async()=>expect((await loadData()).storeExercises).toContainEqual({storeId:id,exerciseId:exercise}))
  }
- await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
  await switchStore(user,'other')
  await user.click(screen.getByRole('button',{name:'トレッドミル'}))
  expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
@@ -456,7 +456,7 @@ it('種目名を変更しても回数のみの記録方式を維持する', asyn
   await user.type(screen.getByLabelText('種目名'),'懸垂')
   await user.click(screen.getByRole('button',{name:'種目設定を保存'}))
   await waitFor(async()=>expect((await loadData()).exercises[0]).toMatchObject({id:'bench', name:'懸垂', recordingMode:'reps'}))
-  await user.click(screen.getByRole('button',{name:'記録する'}))
+  await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
   await user.click(screen.getByRole('button',{name:'懸垂'}))
   expect(screen.queryByLabelText('重量 (kg)')).toBeNull()
   expect(screen.getByText('前回の記録：8回')).toBeTruthy()
@@ -538,9 +538,9 @@ it('自宅を種類から登録し、入力画面を簡素化して過去日付�
  await openSettings(user,'履歴')
  const {fireEvent}=await import('@testing-library/react')
  fireEvent.change(screen.getByLabelText('記録の日付'),{target:{value:'2020-02-02'}})
- await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
  await user.click(screen.getByRole('button',{name:'プランク'}))
- expect(screen.queryByLabelText('利用店舗')).toBeNull()
+ expect(screen.queryByLabelText('店舗を選択')).toBeNull()
  expect(screen.queryByLabelText('設定メニュー')).toBeNull()
  expect(screen.queryByLabelText('記録の日付')).toBeNull()
  expect(screen.queryByText('WORKOUT LOG')).toBeNull()
@@ -552,7 +552,7 @@ it('自宅を種類から登録し、入力画面を簡素化して過去日付�
  expect((await loadData()).workouts[1]).toMatchObject({exerciseId:id,date:'2020-02-02',weight:0,reps:15,sets:1})
  expect(screen.queryByText('端末に保存しました。')).toBeNull()
  await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
- expect(screen.getByLabelText('利用店舗')).toBeTruthy()
+ expect(screen.getByLabelText('店舗を選択')).toBeTruthy()
  await switchStore(user,'other')
  expect(screen.queryByRole('button',{name:'プランク'})).toBeNull()
 })
@@ -585,7 +585,7 @@ it('同名の筋トレ・自宅種目を登録し、編集時にフォームへ�
  await user.selectOptions(screen.getByLabelText('共通の種目'),home.id)
  await user.click(screen.getByRole('button',{name:'店舗に種目を登録'}))
  await waitFor(async()=>expect((await loadData()).storeExercises).toContainEqual({storeId:'a',exerciseId:home.id}))
- await user.click(screen.getByRole('button',{name:'記録する'}))
+ await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
  await user.click(screen.getByRole('button',{name:'スクワット（自宅）'}))
  await user.type(screen.getByLabelText('回数'),'12')
  await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
@@ -595,3 +595,30 @@ it('同名の筋トレ・自宅種目を登録し、編集時にフォームへ�
  expect(saved.workouts.some(record=>record.exerciseId==='squat')).toBe(false)
  expect(parseBackup(JSON.parse(JSON.stringify(saved)))).toEqual(saved)
 },10000)
+
+it('店舗プルダウンの設定から4機能を開き、元の店舗を保持して戻る',async()=>{
+ const user=userEvent.setup()
+ await launch()
+ await user.click(screen.getByRole('button',{name:'B店'}))
+ const select=screen.getByLabelText('店舗を選択') as HTMLSelectElement
+ expect(select.options[select.options.length-1].textContent).toBe('設定')
+ expect(screen.queryByText('利用店舗',{exact:true})).toBeNull()
+ expect(screen.queryByRole('button',{name:'記録する'})).toBeNull()
+ expect(screen.queryByLabelText('設定メニュー')).toBeNull()
+ const before=await loadData()
+ for(const [name,heading] of [
+   ['履歴','日付別の履歴'],
+   ['種目の管理','共通の種目を管理'],
+   ['店舗設定','店舗ごとの種目'],
+   ['バックアップ・復元','バックアップと復元'],
+ ]){
+   await user.selectOptions(select,'__settings__')
+   expect(select.value).toBe('b')
+   await user.click(screen.getByRole('button',{name}))
+   expect(screen.getByRole('heading',{name:heading})).toBeTruthy()
+   await user.click(screen.getByRole('button',{name:'種目一覧に戻る'}))
+   expect(select.value).toBe('b')
+   expect(screen.getByRole('button',{name:'スクワット'})).toBeTruthy()
+ }
+ expect(await loadData()).toEqual(before)
+})
