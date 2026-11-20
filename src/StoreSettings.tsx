@@ -1,3 +1,4 @@
+import {exerciseLabel} from './exerciseLabels'
 import { useState } from 'react'
 import type { FormEvent } from 'react'
 import { normalizeName } from './data'
@@ -40,8 +41,8 @@ export default function StoreSettings({data,commit,onDelete}: Props) {
  }}>店舗を削除</button>}</form>
  <form className="card" onSubmit={submit}><h3>店舗に種目を登録</h3><label>共通の種目<select required value={exerciseId} onChange={event=>setExerciseId(event.target.value)}>
  <option value="">種目を選択</option>
- {data.exercises.filter(row=>!data.storeExercises.some(link=>link.storeId===storeId && link.exerciseId===row.id)).map(row=><option key={row.id} value={row.id}>{row.name}</option>)}
+ {data.exercises.filter(row=>!data.storeExercises.some(link=>link.storeId===storeId && link.exerciseId===row.id)).map(row=><option key={row.id} value={row.id}>{exerciseLabel(row,data.exercises)}</option>)}
  </select></label><p role="alert">{error}</p><button className="primary">店舗に種目を登録</button></form>
- {data.storeExercises.filter(x=>x.storeId===storeId).map(x=><article className="entry" key={x.exerciseId}><div><h3>{data.exercises.find(e=>e.id===x.exerciseId)?.name}</h3></div><div className="actions"><button className="danger" onClick={async()=>{if(confirm('この店舗の種目登録を解除しますか？共通の種目と過去の記録は残ります。')) if(await commit({...data,storeExercises:data.storeExercises.filter(e=>!(e.storeId===storeId&&e.exerciseId===x.exerciseId))})) reset()}}>登録解除</button></div></article>)}
+ {data.storeExercises.filter(x=>x.storeId===storeId).map(x=><article className="entry" key={x.exerciseId}><div><h3>{exerciseLabel(data.exercises.find(e=>e.id===x.exerciseId),data.exercises)}</h3></div><div className="actions"><button className="danger" onClick={async()=>{if(confirm('この店舗の種目登録を解除しますか？共通の種目と過去の記録は残ります。')) if(await commit({...data,storeExercises:data.storeExercises.filter(e=>!(e.storeId===storeId&&e.exerciseId===x.exerciseId))})) reset()}}>登録解除</button></div></article>)}
  {!data.storeExercises.some(x=>x.storeId===storeId)&&<p className="empty">この店舗には種目が未登録です。</p>}</section>
 }

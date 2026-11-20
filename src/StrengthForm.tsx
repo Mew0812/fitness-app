@@ -1,3 +1,4 @@
+import {exerciseLabel} from './exerciseLabels'
 import type {Dispatch, FormEvent, SetStateAction} from 'react'
 import type {Exercise} from './data'
 
@@ -22,7 +23,7 @@ export default function StrengthForm({
 }) {
   return <form onSubmit={submit}>
       {editing && <label>種目<select required value={exerciseId} onChange={e=>setExerciseId(e.target.value)}>
-        {exercises.filter(x=>x.cardioFields===undefined || x.id===exerciseId).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}
+        {exercises.filter(x=>x.cardioFields===undefined || x.id===exerciseId).map(x=><option key={x.id} value={x.id}>{exerciseLabel(x,exercises)}</option>)}
       </select></label>}{editing && !bodyweight && <p className="hint">過去の記録は現在の種目設定に関係なく編集できます。重量を直接入力してください。</p>}<div className="numbers">{!bodyweight && <label>重量 (kg)<input type="number" inputMode="decimal" min="0" max="2000" step="any" required value={weight} onChange={e=>setWeight(e.target.value)}/></label>}<label>回数<input type="number" inputMode="numeric" min="1" max="10000" required value={reps} onChange={e=>setReps(e.target.value)}/></label>{!bodyweight && <div className="set-counter" role="group" aria-label="セット数">
         <span>セット数</span>
         <div className="set-counter-controls">

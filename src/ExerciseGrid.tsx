@@ -1,10 +1,12 @@
+import {exerciseLabel} from './exerciseLabels'
 import { useEffect, useState } from 'react'
 import type { Exercise, Workout } from './data'
 
 import { rankExercises, thresholds } from './exerciseRanking'
 
-export default function ExerciseGrid({exercises, workouts, select}: {
+export default function ExerciseGrid({exercises, workouts, select, allExercises = exercises}: {
   exercises: Exercise[]
+  allExercises?: Exercise[]
   workouts: Workout[]
   select: (id: string) => void
 }) {
@@ -33,10 +35,10 @@ export default function ExerciseGrid({exercises, workouts, select}: {
 
   return <div className="store-grid" aria-label="種目一覧">
     {ranked.map(({exercise, time, tone}) => <button key={exercise.id}
-      aria-label={exercise.name}
+      aria-label={exerciseLabel(exercise,allExercises)}
       className={tone === 'normal' ? undefined : 'exercise-' + tone}
       onClick={() => select(exercise.id)}>
-      {exercise.name}
+      {exerciseLabel(exercise,allExercises)}
       {Number.isFinite(time) && <span>
         <time dateTime={new Date(time).toISOString()}>
           {new Date(time).toLocaleString('ja-JP', {dateStyle:'short', timeStyle:'short'})}

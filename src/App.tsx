@@ -9,6 +9,7 @@ import ExerciseGuide from './ExerciseGuide'
 import BackupPanel from './BackupPanel'
 import WorkoutHistory from './WorkoutHistory'
 import StrengthForm from './StrengthForm'
+import {exerciseLabel, exerciseType} from './exerciseLabels'
 import { workoutTime, workoutTimestamp, updateWorkout } from './workoutRecords'
 import { CardioForm } from './CardioForm'
 import { cardioSummaryText } from './cardioSummary'
@@ -60,6 +61,7 @@ export default function App() {
   const [reps, setReps] = useState('')
   const [sets, setSets] = useState(0)
   const settingsMenu = useRef<HTMLDetailsElement>(null)
+  const exerciseForm = useRef<HTMLFormElement>(null)
   useEffect(() => { loadData().then(d => {setData(d); setReady(true)}).catch(() => setMessage('データを読み込めません。Safariの通常モードで再読み込みしてください。')) }, [])
   async function commit(next: Data) {
     if (!ready || saving.current) return false
@@ -94,7 +96,12 @@ export default function App() {
     e.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) return
-    if (data.exercises.some(x => normalizeName(x.name) === normalizeName(trimmed) && x.id !== editExercise)) {setMessage('同じ名前の種目が登録されています。'); return}
+    const type = exerciseHome ? 'home' : exerciseFields !== undefined ? 'cardio' : 'strength'
+    if (data.exercises.some(x => normalizeName(x.name) === normalizeName(trimmed) &&
+        exerciseType(x) === type && x.id !== editExercise)) {
+      setMessage('同じ名前・種類の種目が登録されています。')
+      return
+    }
     const id = editExercise || newId()
     const previous = data.exercises.find(row => row.id === editExercise)
     const remainsCardio = exerciseFields !== undefined
@@ -214,7 +221,7 @@ export default function App() {
     {!recordingScreen && <p role="status" className="status">{tab === 'record' && !selectedExercise && message === '端末に保存しました。' ? '' : message}</p>}
     <fieldset disabled={!ready || busy} className="workspace">
     {tab === 'record' && !selectedExercise && <section>
-      <ExerciseGrid exercises={exercises} workouts={data.workouts} select={id => {setExerciseId(id);setWeight('')}}/>
+      <ExerciseGrid allExercises={data.exercises} exercises={exercises} workouts={data.workouts} select={id => {setExerciseId(id);setWeight('')}}/>
       {!exercises.length && <p>「店舗設定」で種目を登録してください。</p>}
     </section>}
     {((tab==='record' && selectedExercise)||tab==='history') && <>{tab === 'history' && <div className="section-head"><div><p className="eyebrow">YOUR HISTORY</p><h2>日付別の履歴</h2></div><label>日付<input aria-label="記録の日付" type="date" required value={date} onChange={e=>{setDate(e.target.value);if(!editing) reset()}}/></label></div>}
@@ -222,7 +229,7 @@ export default function App() {
     {tab==='record' && selectedExercise && <>
       <button onClick={() => { reset(); setExerciseId('') }}>種目選択に戻る</button>
       <div className="card workout-card">
-      <h3>{editing ? '記録を編集' : selectedExercise.name}</h3>
+      <h3>{editing ? '記録を編集' : exerciseLabel(selectedExercise,data.exercises)}</h3>
       <section className="workout-info" aria-label="保存済みの設定">
         <p><strong>共通設定</strong> {selectedExercise.settings || '設定は未登録です。'}</p>
         <ExerciseGuide name={selectedExercise.name}/>
@@ -252,7 +259,7 @@ export default function App() {
       remove={async id => {
         if (confirm('この記録を削除しますか？') && await commit(updateWorkout(data, id))) reset()
       }}/></>}
-    {tab==='exercises' && <><p className="eyebrow">EXERCISE LIBRARY</p><h2>共通の種目を管理</h2><p className="hint">同じ種目はここで1度だけ登録し、各店舗に登録してください。種目名の変更は全店舗と履歴に反映されます。</p><form className="card" onSubmit={submitExercise}><label>種目名<input required maxLength={80} placeholder="例：ベンチプレス" value={name} onChange={e=>setName(e.target.value)}/></label><label>種目の種類<select value={exerciseHome ? 'home' : exerciseFields === undefined ? 'strength' : 'cardio'}
+    {tab==='exercises' && <><p className="eyebrow">EXERCISE LIBRARY</p><h2>共通の種目を管理</h2><p className="hint">同じ種目はここで1度だけ登録し、各店舗に登録してください。種目名の変更は全店舗と履歴に反映されます。</p><form ref={exerciseForm} className="card" style={{scrollMarginTop:16}} onSubmit={submitExercise}><label>種目名<input required maxLength={80} placeholder="例：ベンチプレス" value={name} onChange={e=>setName(e.target.value)}/></label><label>種目の種類<select value={exerciseHome ? 'home' : exerciseFields === undefined ? 'strength' : 'cardio'}
       onChange={e=>{setExerciseHome(e.target.value==='home');setExerciseFields(e.target.value==='cardio' ? [] : undefined)}}>
       <option value="strength">筋トレ</option><option value="cardio">有酸素運動</option><option value="home">自宅</option>
     </select></label>
@@ -262,7 +269,7 @@ export default function App() {
       {cardioFields.map(field=><label key={field.key}><input type="checkbox" checked={exerciseFields.includes(field.key)}
         onChange={e=>setExerciseFields(e.target.checked ? [...exerciseFields,field.key] : exerciseFields.filter(key=>key!==field.key))}/>{field.label}</label>)}
     </fieldset>}
-    <label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label><button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setExerciseFields(undefined);setExerciseHome(false);setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{x.name}</h3><details className="exercise-management"><summary>共通設定</summary><ExerciseSettings exercise={x} data={data} commit={commit}/></details><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setExerciseFields(x.cardioFields);setExerciseHome(Boolean(x.home));setEditExercise(x.id)}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count || data.legacySettings.some(e=>e.exerciseId===x.id)){setMessage('記録または旧設定がある種目は削除できません。店舗からの登録解除は「店舗設定」で行えます。');return}if(confirm(`「${x.name}」を削除しますか？関連する記録 ${count} 件と全店舗の種目設定も削除されます。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),workouts:data.workouts.filter(w=>w.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
+    <label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label><button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setExerciseFields(undefined);setExerciseHome(false);setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{exerciseLabel(x,data.exercises)}</h3><details className="exercise-management"><summary>共通設定</summary><ExerciseSettings exercise={x} data={data} commit={commit}/></details><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setExerciseFields(x.cardioFields);setExerciseHome(Boolean(x.home));setEditExercise(x.id);requestAnimationFrame(()=>exerciseForm.current?.scrollIntoView({behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',block:'start',inline:'nearest'}))}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count || data.legacySettings.some(e=>e.exerciseId===x.id)){setMessage('記録または旧設定がある種目は削除できません。店舗からの登録解除は「店舗設定」で行えます。');return}if(confirm(`「${x.name}」を削除しますか？関連する記録 ${count} 件と全店舗の種目設定も削除されます。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),workouts:data.workouts.filter(w=>w.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
     {tab==='stores' && <StoreSettings data={data} commit={commit} onDelete={id=>{if(store===id){setStore(null);reset();setExerciseId('')}}}/>}
     {tab==='backup' && backupPanel}
     </fieldset><footer>自分と向き合う時間を、少しずつ。<br/><span>MY FITNESS · 食事・体重・グラフは今後追加予定</span></footer></main></div>
