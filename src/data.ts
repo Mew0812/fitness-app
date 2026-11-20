@@ -4,7 +4,7 @@ export type Store = { id: StoreId; name: string; note?: string }
 export type Equipment = { id: string; storeId: StoreId; exerciseId: string; name: string; weights: number[] }
 export type RecordingMode = 'strength' | 'reps' | 'cardio'
 export type CardioMode = 'timed' | 'distance' | 'climb'
-export type Exercise = { id: string; name: string; recordingMode?: RecordingMode; cardioMode?: CardioMode; settings?: string; weights?: number[]; cardioFields?: CardioField[] }
+export type Exercise = { id: string; name: string; home?: boolean; recordingMode?: RecordingMode; cardioMode?: CardioMode; settings?: string; weights?: number[]; cardioFields?: CardioField[] }
 export type StrengthWorkout = { id: string; exerciseId: string; date: string; weight: number; reps: number; sets: number; trainedAt?: number }
 export const cardioFields = [
   {key:'distance', label:'走行距離 (km)', unit:'km', integer:false},
@@ -29,8 +29,8 @@ type LegacyWeight = StoreExercise & { weights: number[] }
 type DataV4 = Omit<Data, 'version' | 'storeExercises'> & { version: 4; storeExercises: LegacyWeight[] }
 type LegacySetting = { storeId: StoreId; storeName: string; exerciseId: string; text: string }
 type LegacyStoreExercise = LegacyWeight & { settings: string }
-export type Data = { version: 8; legacySettings: LegacySetting[]; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; storeExercises: StoreExercise[] }
-export const emptyData = (): Data => ({ version: 8, legacySettings: [], exercises: addCardioDefaults([]).map(withRecordingMode), workouts: [], stores: defaultStores(), storeExercises: [] })
+export type Data = { version: 9; legacySettings: LegacySetting[]; exercises: Exercise[]; workouts: Workout[]; stores: Store[]; storeExercises: StoreExercise[] }
+export const emptyData = (): Data => ({ version: 9, legacySettings: [], exercises: addCardioDefaults([]).map(withRecordingMode), workouts: [], stores: defaultStores(), storeExercises: [] })
 export const normalizeName = (name: string) => name.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('ja')
 // crypto.randomUUID is unavailable on iPhone when viewing a LAN HTTP URL.
 export function withRecordingMode(exercise: Exercise): Exercise {
@@ -56,7 +56,7 @@ export function newId(): string {
 }
 export function availableExercises(data: Data, store: StoreChoice): Exercise[] {
   const ids = new Set(data.storeExercises.filter(x=>store==='other'||x.storeId===store).map(x=>x.exerciseId))
-  return data.exercises.filter(x=>ids.has(x.id))
+  return data.exercises.filter(x=>ids.has(x.id) && (store !== 'other' || !x.home))
 }
 export function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
@@ -188,7 +188,7 @@ function parseStrengthBackup(value: unknown): Data {
   if (version !== 5 && version !== 6) {
     const old = parseV4(value)
     return {
-      ...old, version: 8,
+      ...old, version: 9,
       storeExercises: old.storeExercises.map(({storeId, exerciseId}) => ({storeId, exerciseId})),
     }
   }
@@ -197,7 +197,7 @@ function parseStrengthBackup(value: unknown): Data {
   if (!Array.isArray(data.storeExercises)) throw new Error('店舗データが不正です。')
   const core = parseV4({...data, version: 4, storeExercises: data.storeExercises.map(row => ({...row, weights: [0]}))})
   return {
-    ...core, version: 8,
+    ...core, version: 9,
     exercises: core.exercises.map((exercise, index) => {
       const weights = data.exercises[index].weights
       return weights === undefined ? exercise : {...exercise, weights: normalizeWeights(weights)}
@@ -223,9 +223,9 @@ function addCardioDefaults(exercises: Exercise[]): Exercise[] {
 
 export function parseBackup(value: unknown): Data {
   const version = (value as {version?: number} | null)?.version
-  if (version !== 7 && version !== 8) {
+  if (version !== 7 && version !== 8 && version !== 9) {
     const old = parseStrengthBackup(value)
-    return {...old,exercises:addCardioDefaults(old.exercises).map(withRecordingMode)}
+    return {...old,exercises:addCardioDefaults(old.exercises).map(row=>({...withRecordingMode(row), ...(row.cardioFields === undefined && row.name.includes('（自宅）') ? {home:true,recordingMode:'reps' as const} : {})}))}
   }
   const data = value as Data
   if (!Array.isArray(data.workouts)) throw new Error('記録データが不正です。')
@@ -239,14 +239,21 @@ export function parseBackup(value: unknown): Data {
     const migrated = withRecordingMode({
       ...exercise,
       ...(fields === undefined ? {} : {cardioFields:[...new Set(fields)]}),
-      ...(version === 8 && source.recordingMode !== undefined ? {recordingMode:source.recordingMode} : {}),
-      ...(version === 8 && source.cardioMode !== undefined ? {cardioMode:source.cardioMode} : {}),
+      ...(version >= 8 && source.recordingMode !== undefined ? {recordingMode:source.recordingMode} : {}),
+      ...(version >= 8 && source.cardioMode !== undefined ? {cardioMode:source.cardioMode} : {}),
     })
     const {recordingMode, cardioMode} = migrated
     if ((recordingMode === 'cardio' && (fields === undefined || !['timed','distance','climb'].includes(cardioMode ?? ''))) ||
         (recordingMode !== 'cardio' && (!['strength','reps'].includes(recordingMode ?? '') || fields !== undefined || cardioMode !== undefined))) {
       throw new Error('種目の記録方式が不正です。')
     }
+    if (version === 9 && source.home !== undefined && typeof source.home !== 'boolean') throw new Error('種目の種類が不正です。')
+    const home = version < 9 ? recordingMode !== 'cardio' && exercise.name.includes('（自宅）') : source.home
+    if (home && recordingMode !== 'reps') {
+      if (version === 9) throw new Error('自宅種目の記録方式が不正です。')
+      return {...migrated,home:true,recordingMode:'reps' as const}
+    }
+    if (home !== undefined) return {...migrated,home}
     return cardioMode === 'distance' ? {...migrated,cardioFields:['distance' as const]} : migrated
   })
   const ids = new Set(core.workouts.map(record=>record.id))

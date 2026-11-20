@@ -54,7 +54,7 @@ it('版7から記録方式を確定し、全ID・記録値を維持して再移�
     {id:'w3',exerciseId:'climb',date:'2026-11-12',kind:'cardio',metrics:{floors:20,steps:0}},
   ],storeExercises:[{storeId:'a',exerciseId:'e1'}]}
   const migrated = parseBackup(old)
-  expect(migrated.version).toBe(8)
+  expect(migrated.version).toBe(9)
   expect(migrated.exercises.map(row=>[row.id,row.recordingMode,row.cardioMode])).toEqual([
     ['e1','reps',undefined], ['run','cardio','distance'], ['climb','cardio','climb'],
   ])

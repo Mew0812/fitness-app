@@ -42,6 +42,7 @@ export async function saveData(data: Data, expected?: Data): Promise<Data> {
         if ([1, 2, 3, 4].includes(previous.result?.version)) store.put(previous.result, 'before-v5-migration')
         if ([1, 2, 3, 4, 5, 6].includes(previous.result?.version)) store.put(previous.result, 'before-v7-migration')
         if (previous.result?.version >= 1 && previous.result.version < 8) store.put(previous.result, 'before-v8-migration')
+        if (previous.result?.version >= 1 && previous.result.version < 9) store.put(previous.result, 'before-v9-migration')
         store.put(clean, 'main')
       } catch (error) {
         failure = error
