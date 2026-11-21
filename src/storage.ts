@@ -19,7 +19,7 @@ export async function loadData(): Promise<Data> {
     tx.onerror = () => { db.close(); reject(tx.error) }
   })
 }
-export async function saveData(data: Data, expected?: Data): Promise<Data> {
+export async function saveData(data: Data, expected?: Data, beforeRestore = false): Promise<Data> {
   const clean = parseBackup(data)
   const db = await openDB()
   return new Promise((resolve, reject) => {
@@ -43,6 +43,7 @@ export async function saveData(data: Data, expected?: Data): Promise<Data> {
         if ([1, 2, 3, 4, 5, 6].includes(previous.result?.version)) store.put(previous.result, 'before-v7-migration')
         if (previous.result?.version >= 1 && previous.result.version < 8) store.put(previous.result, 'before-v8-migration')
         if (previous.result?.version >= 1 && previous.result.version < 9) store.put(previous.result, 'before-v9-migration')
+        if (beforeRestore) store.put(current, 'before-cloud-restore')
         store.put(clean, 'main')
       } catch (error) {
         failure = error
@@ -51,5 +52,25 @@ export async function saveData(data: Data, expected?: Data): Promise<Data> {
     }
     tx.oncomplete = () => { db.close(); resolve(clean) }
     tx.onabort = () => { db.close(); reject(failure ?? tx.error ?? new Error('保存できませんでした。')) }
+  })
+}
+
+// Cloud metadata is separate from the existing workout/JSON format.
+export async function readLocalValue<T>(key: string): Promise<T | undefined> {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('data', 'readonly')
+    const request = tx.objectStore('data').get(key)
+    tx.oncomplete = () => { db.close(); resolve(request.result) }
+    tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? new Error('端末データを読み込めません。')) }
+  })
+}
+export async function writeLocalValue<T>(key: string, value: T): Promise<void> {
+  const db = await openDB()
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction('data', 'readwrite')
+    tx.objectStore('data').put(value, key)
+    tx.oncomplete = () => { db.close(); resolve() }
+    tx.onabort = tx.onerror = () => { db.close(); reject(tx.error ?? new Error('端末に保存できません。')) }
   })
 }

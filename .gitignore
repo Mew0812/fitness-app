@@ -30,6 +30,7 @@ myfitness-*.json
 .git-credentials
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.pfx

@@ -7,6 +7,8 @@ import ExerciseProgress from './ExerciseProgress'
 import ExerciseGrid from './ExerciseGrid'
 import ExerciseGuide from './ExerciseGuide'
 import BackupPanel from './BackupPanel'
+import CloudBackupPanel from './CloudBackupPanel'
+import {useCloudBackup} from './useCloudBackup'
 import WorkoutHistory from './WorkoutHistory'
 import StrengthForm from './StrengthForm'
 import {exerciseLabel, exerciseType} from './exerciseLabels'
@@ -27,6 +29,7 @@ export default function App() {
   const [exerciseFields, setExerciseFields] = useState<CardioField[] | undefined>()
   const saving = useRef(false)
   const [ready, setReady] = useState(false)
+  const cloud = useCloudBackup(ready)
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState('')
   const [reminderMonth, setReminderMonth] = useState('')
@@ -62,11 +65,11 @@ export default function App() {
   const [sets, setSets] = useState(0)
   const exerciseForm = useRef<HTMLFormElement>(null)
   useEffect(() => { loadData().then(d => {setData(d); setReady(true)}).catch(() => setMessage('データを読み込めません。Safariの通常モードで再読み込みしてください。')) }, [])
-  async function commit(next: Data) {
+  async function commit(next: Data, beforeRestore = false) {
     if (!ready || saving.current) return false
     saving.current = true
     setBusy(true)
-    try { const clean = await saveData(next, data); setData(clean); setMessage('端末に保存しました。'); return true }
+    try { const clean = await saveData(next, data, beforeRestore); setData(clean); setMessage('端末に保存しました。'); return true }
     catch (error) { setMessage(error instanceof Error && error.name === 'ConcurrentUpdateError' ? error.message : '保存できませんでした。空き容量とブラウザの設定をご確認ください。'); return false }
     finally { saving.current = false; setBusy(false) }
   }
@@ -154,11 +157,16 @@ export default function App() {
     <button className="primary" onClick={() => { dismissReminder(); setTab('backup') }}>バックアップへ</button>
     <button type="button" onClick={dismissReminder}>閉じる</button>
   </section>
-  const backupPanel = <BackupPanel data={data} commit={commit} today={today} setMessage={setMessage}
-    onRestored={next => {
+  function onRestored(next: Data) {
       if (store && store !== 'other' && !next.stores.some(row => row.id === store)) setStore(null)
       reset(); setExerciseId(''); setName(''); setExerciseSettings(''); setExerciseFields(undefined); setEditExercise('')
-    }}/>
+  }
+  const backupPanel = <><BackupPanel data={data} commit={commit} today={today} setMessage={setMessage} onRestored={onRestored}/>
+    <CloudBackupPanel cloud={cloud} restore={async next=>{
+      if (!(await commit(next,true))) return false
+      onRestored(next)
+      return true
+    }}/></>
   if (!store && tab === 'backup') return <div className="app"><main>
     <button type="button" onClick={() => setTab('record')}>店舗選択に戻る</button>
     <p role="status" className="status">{message}</p>
@@ -206,6 +214,7 @@ export default function App() {
         {([['history','履歴'],['exercises','種目の管理'],['stores','店舗設定'],['backup','バックアップ・復元']] as const)
           .map(([id,label]) => <button key={id} type="button" onClick={() => setTab(id)}>{label}</button>)}
       </nav>}
+      {tab === 'settings' && cloud.user && <div className="hint"><p>クラウド最終成功：{cloud.state.lastSuccess ? new Date(cloud.state.lastSuccess).toLocaleString('ja-JP') : '未実行'}<br/>{cloud.state.message}</p>{cloud.state.error && <p role="alert">直近の失敗：{cloud.state.error}</p>}</div>}
     </>}
     {!recordingScreen && <p role="status" className="status">{tab === 'record' && !selectedExercise && message === '端末に保存しました。' ? '' : message}</p>}
     <fieldset disabled={!ready || busy} className="workspace">

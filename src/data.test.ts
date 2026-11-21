@@ -1,6 +1,7 @@
 import 'fake-indexeddb/auto'
 import { describe, it, expect, vi } from 'vitest'
 import { emptyData, loadData, saveData, parseBackup, validDate } from './data'
+import {readLocalValue} from './storage'
 const sample = { ...emptyData(), exercises: [{id:'e1',name:'スクワット',recordingMode:'strength' as const}], workouts: [{id:'w1',exerciseId:'e1',date:'2026-11-10',weight:20,reps:10,sets:3}] }
 describe('バックアップの検証',()=>{
  it('正常なJSONを復元できる',()=>expect(parseBackup(JSON.parse(JSON.stringify(sample)))).toEqual(sample))
@@ -25,6 +26,28 @@ describe('IndexedDBへの保存',()=>{
  await expect(saveData({...sample,exercises:[]})).rejects.toThrow()
  expect(await loadData()).toEqual(sample)
  })
+})
+
+it('クラウド復元前のデータを同じトランザクションで退避し、全ID・値を維持する',async()=>{
+  await saveData(sample)
+  const next={...sample,workouts:[{...sample.workouts[0],weight:40}]}
+  await saveData(next,sample,true)
+  expect(await readLocalValue('before-cloud-restore')).toEqual(sample)
+  expect(await loadData()).toEqual(next)
+  const before=await readLocalValue('before-cloud-restore')
+  await expect(saveData({...sample,exercises:[]},next,true)).rejects.toThrow()
+  expect(await readLocalValue('before-cloud-restore')).toEqual(before)
+  expect(await loadData()).toEqual(next)
+  const put=IDBObjectStore.prototype.put
+  const spy=vi.spyOn(IDBObjectStore.prototype,'put').mockImplementation(function(this:IDBObjectStore,value,key){
+    const request=put.call(this,value,key)
+    if(key==='main')this.transaction.abort()
+    return request
+  })
+  try {await expect(saveData(sample,next,true)).rejects.toThrow()}
+  finally {spy.mockRestore()}
+  expect(await readLocalValue('before-cloud-restore')).toEqual(before)
+  expect(await loadData()).toEqual(next)
 })
 
 it('IndexedDBの書き込みが中断された場合は復元前の記録を保持する', async () => {

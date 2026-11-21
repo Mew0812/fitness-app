@@ -127,3 +127,6 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 
 .settings-links { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; margin-top: 10px; }
 .settings-links button { text-align: start; padding-inline: 12px; }
+.cloud-backup, .cloud-backup form, .cloud-backup fieldset { min-width: 0; }
+.cloud-backup button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-bottom: 8px; }
+.cloud-backup input, .cloud-backup select { min-width: 0; max-width: 100%; }
