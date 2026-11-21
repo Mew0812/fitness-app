@@ -190,7 +190,7 @@ export default function App() {
     <main>{!recordingScreen && reminder}
     {!recordingScreen && <>
       <div className="store-switch">
-        <select aria-label="店舗を選択" value={store} disabled={busy} onChange={event => {
+        <select aria-label="店舗を選択" value={tab === 'record' ? store : '__settings__'} disabled={busy} onChange={event => {
           if (event.target.value === '__settings__') {
             setTab('settings')
             return
@@ -202,11 +202,6 @@ export default function App() {
           <optgroup label="────────"><option value="__settings__">設定</option></optgroup>
         </select>
       </div>
-      {tab !== 'record' && <button type="button" onClick={() => {
-        reset()
-        setExerciseId('')
-        setTab('record')
-      }}>種目一覧に戻る</button>}
       {tab === 'settings' && <nav className="settings-links" aria-label="設定メニュー">
         {([['history','履歴'],['exercises','種目の管理'],['stores','店舗設定'],['backup','バックアップ・復元']] as const)
           .map(([id,label]) => <button key={id} type="button" onClick={() => setTab(id)}>{label}</button>)}
@@ -263,7 +258,7 @@ export default function App() {
       {cardioFields.map(field=><label key={field.key}><input type="checkbox" checked={exerciseFields.includes(field.key)}
         onChange={e=>setExerciseFields(e.target.checked ? [...exerciseFields,field.key] : exerciseFields.filter(key=>key!==field.key))}/>{field.label}</label>)}
     </fieldset>}
-    <label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label><button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setExerciseFields(undefined);setExerciseHome(false);setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{exerciseLabel(x,data.exercises)}</h3><details className="exercise-management"><summary>共通設定</summary><ExerciseSettings exercise={x} data={data} commit={commit}/></details><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setExerciseFields(x.cardioFields);setExerciseHome(Boolean(x.home));setEditExercise(x.id);requestAnimationFrame(()=>exerciseForm.current?.scrollIntoView({behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',block:'start',inline:'nearest'}))}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count || data.legacySettings.some(e=>e.exerciseId===x.id)){setMessage('記録または旧設定がある種目は削除できません。店舗からの登録解除は「店舗設定」で行えます。');return}if(confirm(`「${x.name}」を削除しますか？関連する記録 ${count} 件と全店舗の種目設定も削除されます。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),workouts:data.workouts.filter(w=>w.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
+    <label>設定<textarea rows={4} value={exerciseSettings} onChange={e=>setExerciseSettings(e.target.value)}/></label>{editExercise && <ExerciseSettings exerciseId={editExercise} data={data} append={text=>setExerciseSettings(current=>current ? current+"\n"+text : text)}/>}<button className="primary">{editExercise?'種目設定を保存':'＋ 種目を登録'}</button>{editExercise && <button type="button" onClick={()=>{setName('');setExerciseSettings('');setExerciseFields(undefined);setExerciseHome(false);setEditExercise('')}}>キャンセル</button>}</form>{data.exercises.map(x=><article className="entry" key={x.id}><h3>{exerciseLabel(x,data.exercises)}</h3><div className="actions"><button onClick={()=>{setName(x.name);setExerciseSettings(x.settings ?? '');setExerciseFields(x.cardioFields);setExerciseHome(Boolean(x.home));setEditExercise(x.id);requestAnimationFrame(()=>exerciseForm.current?.scrollIntoView({behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',block:'start',inline:'nearest'}))}}>編集</button><button className="danger" onClick={async()=>{const count=data.workouts.filter(w=>w.exerciseId===x.id).length;if(count){setMessage(`「${x.name}」にはトレーニング記録が${count}件あるため削除できません。削除する場合は、先に「履歴」で記録を確認して削除してください。`);return}const legacyCount=data.legacySettings.filter(e=>e.exerciseId===x.id).length;if(confirm(`「${x.name}」を削除しますか？共通設定と全店舗への登録情報${legacyCount ? `、旧店舗別設定${legacyCount}件` : ""}も削除されます。トレーニング記録は削除しません。`)) if(await commit({...data,exercises:data.exercises.filter(e=>e.id!==x.id),legacySettings:data.legacySettings.filter(e=>e.exerciseId!==x.id),storeExercises:data.storeExercises.filter(e=>e.exerciseId!==x.id)})){setExerciseId('');reset();setName('');setExerciseSettings('');setExerciseFields(undefined);setEditExercise('')}}}>削除</button></div></article>)}{!data.exercises.length && <p className="empty">よく行う種目を登録しましょう。</p>}</>}
     {tab==='stores' && <StoreSettings data={data} commit={commit} onDelete={id=>{if(store===id){setStore(null);reset();setExerciseId('')}}}/>}
     {tab==='backup' && backupPanel}
     </fieldset><footer>自分と向き合う時間を、少しずつ。<br/><span>MY FITNESS · 食事・体重・グラフは今後追加予定</span></footer></main></div>
