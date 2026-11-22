@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import 'fake-indexeddb/auto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { availableExercises, emptyData, loadData, parseBackup, saveData, isCardio, withRecordingMode } from './data'
@@ -15,12 +15,18 @@ const fixture = (): Data => ({...emptyData(),exercises:[{id:'bench',name:'ベン
 afterEach(()=>{cleanup();vi.restoreAllMocks()})
 beforeEach(async()=>{Object.defineProperty(Element.prototype,'scrollIntoView',{configurable:true,value:vi.fn()});await saveData(fixture());vi.spyOn(window,'confirm').mockReturnValue(true);vi.spyOn(window,'scrollTo').mockImplementation(()=>{})})
 async function launch() {render(<App/>);await waitFor(()=>expect(screen.getByRole('button',{name:'A店'}).matches(':disabled')).toBe(false))}
+function swipeBack() {
+ const target=document.querySelector('main')!
+ fireEvent.touchStart(target,{touches:[{identifier:1,clientX:5,clientY:100}]})
+ fireEvent.touchMove(target,{touches:[{identifier:1,clientX:110,clientY:105}]})
+ fireEvent.touchEnd(target,{touches:[],changedTouches:[{identifier:1,clientX:110,clientY:105}]})
+}
 async function switchStore(user: ReturnType<typeof userEvent.setup>, store: string) {
- if (!screen.queryByLabelText('店舗を選択')) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+ if (!screen.queryByLabelText('店舗を選択')) swipeBack()
  await user.selectOptions(screen.getByLabelText('店舗を選択'),store)
 }
 async function openSettings(user: ReturnType<typeof userEvent.setup>, name: string) {
- if (!screen.queryByLabelText('店舗を選択')) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+ if (!screen.queryByLabelText('店舗を選択')) swipeBack()
  await user.selectOptions(screen.getByLabelText('店舗を選択'),'__settings__')
  await user.click(screen.getByRole('button',{name}))
 }
@@ -163,7 +169,7 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
  await user.click(screen.getByRole('button',{name:'種目設定を保存'}))
  await waitFor(async () => expect((await loadData()).exercises[0].settings).toBe('グリップ：内側'))
  await user.selectOptions(screen.getByLabelText('店舗を選択'),'a')
- if(screen.queryByRole('button',{name:'種目選択に戻る'})) await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+ if(!screen.queryByLabelText('店舗を選択')) swipeBack()
  expect(screen.queryByText('端末に保存しました。')).toBeNull()
  expect(screen.queryByRole('button',{name:'店舗選択に戻る'})).toBeNull()
  expect(screen.queryByRole('heading',{name:'A店の種目'})).toBeNull()
@@ -171,7 +177,7 @@ it('店舗情報と選択画面を表示し、共通設定を各店舗とその�
    await switchStore(user,store)
    await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
    expect(screen.getByRole('region',{name:'保存済みの設定'}).textContent).toContain('グリップ：内側')
-   await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+   swipeBack()
  }
  const saved = await loadData()
  expect(parseBackup(JSON.parse(JSON.stringify(saved)))).toEqual(saved)
@@ -237,10 +243,6 @@ it('候補を持たない種目でも0kg・整数・小数を保存し、空欄�
  for(const [index, value] of ['0','17','32.5','37.5'].entries()){
    await user.clear(weight)
    await user.type(weight,value)
-   if(index > 0) {
-     await user.type(reps,'10')
-     await user.click(plus)
-   }
    await user.click(save)
    await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(index+2))
  }
@@ -550,7 +552,7 @@ it('自宅を種類から登録し、入力画面を簡素化して過去日付�
  await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(2))
  expect((await loadData()).workouts[1]).toMatchObject({exerciseId:id,date:'2020-02-02',weight:0,reps:15,sets:1})
  expect(screen.queryByText('端末に保存しました。')).toBeNull()
- await user.click(screen.getByRole('button',{name:'種目選択に戻る'}))
+ swipeBack()
  expect(screen.getByLabelText('店舗を選択')).toBeTruthy()
  await switchStore(user,'other')
  expect(screen.queryByRole('button',{name:'プランク'})).toBeNull()
@@ -656,4 +658,66 @@ it('種目カードを簡素化し、履歴を保護しながら旧設定付き�
  await user.click(screen.getByRole('button',{name:'B店'}))
  expect(screen.queryByRole('button',{name:'スクワット'})).toBeNull()
  expect(screen.getByRole('button',{name:'ベンチプレス'})).toBeTruthy()
+})
+
+it('保存成功・失敗後も重量・回数・セット数を保持し、スワイプや種目変更では別種目へ混在させない',async()=>{
+ const user=userEvent.setup()
+ await launch()
+ await user.click(screen.getByRole('button',{name:'B店'}))
+ await user.click(screen.getByRole('button',{name:'ベンチプレス'}))
+ expect(screen.queryByRole('button',{name:'種目選択に戻る'})).toBeNull()
+ await user.type(screen.getByLabelText('重量 (kg)'),'32.5')
+ await user.type(screen.getByLabelText('回数'),'8')
+ for(let i=0;i<4;i++)await user.click(screen.getByRole('button',{name:'セット数を増やす'}))
+ const check=()=>{
+  expect(screen.getByLabelText('重量 (kg)')).toHaveProperty('value','32.5')
+  expect(screen.getByLabelText('回数')).toHaveProperty('value','8')
+  expect(screen.getByLabelText('現在のセット数').textContent).toBe('4')
+ }
+ await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(2))
+ check()
+ expect(screen.getByText('前回の記録：32.5kg × 8回 × 4セット')).toBeTruthy()
+ await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ await waitFor(async()=>expect((await loadData()).workouts).toHaveLength(3))
+ check()
+ const saved=await loadData()
+ expect(new Set(saved.workouts.map(row=>row.id)).size).toBe(3)
+ expect(within(screen.getByRole('region',{name:'成長グラフ'})).getAllByRole('listitem')).toHaveLength(3)
+ const put=IDBObjectStore.prototype.put
+ const spy=vi.spyOn(IDBObjectStore.prototype,'put').mockImplementation(function(this:IDBObjectStore,value,key){
+  const request=put.call(this,value,key)
+  if(key==='main')this.transaction.abort()
+  return request
+ })
+ await user.click(screen.getByRole('button',{name:'＋ 記録を保存'}))
+ await screen.findByText('保存できませんでした。空き容量とブラウザの設定をご確認ください。')
+ spy.mockRestore()
+ check()
+ expect((await loadData()).workouts).toEqual(saved.workouts)
+ swipeBack()
+ await user.click(screen.getByRole('button',{name:'スクワット'}))
+ expect(screen.getByLabelText('重量 (kg)')).toHaveProperty('value','')
+ expect(screen.getByLabelText('回数')).toHaveProperty('value','')
+ expect(screen.getByLabelText('現在のセット数').textContent).toBe('—')
+ await user.type(screen.getByLabelText('重量 (kg)'),'99')
+ swipeBack()
+ expect((await loadData()).workouts).toEqual(saved.workouts)
+},10000)
+
+it('設定の各画面から左端スワイプで設定メニューへ戻り、未保存設定と店舗情報を勝手に保存しない',async()=>{
+ const user=userEvent.setup()
+ await launch()
+ await user.click(screen.getByRole('button',{name:'B店'}))
+ const before=await loadData()
+ for(const name of ['履歴','種目の管理','店舗設定','バックアップ・復元']){
+  await openSettings(user,name)
+  if(name==='種目の管理')await user.type(screen.getByLabelText('種目名'),'保存しない種目')
+  swipeBack()
+  expect(screen.getByRole('navigation',{name:'設定メニュー'})).toBeTruthy()
+  expect(screen.getByLabelText('店舗を選択')).toHaveProperty('value','__settings__')
+ }
+ await user.selectOptions(screen.getByLabelText('店舗を選択'),'b')
+ expect(screen.getByRole('button',{name:'スクワット'})).toBeTruthy()
+ expect(await loadData()).toEqual(before)
 })

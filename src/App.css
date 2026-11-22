@@ -4,8 +4,6 @@
 .store-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.store-grid button{min-height:110px;font-weight:700;font-size:20px;overflow-wrap:anywhere}.store-grid span{display:block;font-size:12px;font-weight:400}.store-switch{margin-bottom:20px}.store-switch select{max-width:100%}nav{overflow-x:auto}nav button{flex-shrink:0}.numbers select{padding:12px 5px}.hint{font-size:12px;color:#6d796a} @media(max-width:480px){.numbers{grid-template-columns:1.4fr 1fr 1fr}.numbers input{padding:12px 8px}.store-grid button{font-size:18px}.section-head{flex-wrap:wrap}}
 textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;resize:vertical;background:#fafbf8;border:1px solid #d7dfd2;border-radius:8px;padding:12px;color:#243f31;margin:8px 0 15px}textarea:focus-visible{outline:3px solid #b39850;outline-offset:2px}.exercise-settings{background:#f2f5ed;border-radius:10px;padding:15px;margin:0 0 20px}.exercise-settings p,.settings-text{white-space:pre-wrap;overflow-wrap:anywhere}.exercise-settings h3{margin-bottom:6px}.exercise-settings strong{font-size:13px}
 .store-grid button{border-radius:6px;aspect-ratio:1;min-width:0;white-space:normal}.store-grid span{white-space:pre-wrap;overflow-wrap:anywhere}.exercise-settings{margin-top:16px}.exercise-settings details{margin-top:12px}.progress-chart{padding:0;list-style:none}.progress-chart li{display:grid;grid-template-columns:auto minmax(20px,1fr) auto;align-items:center;gap:8px;font-size:13px}.progress-chart meter{width:100%}
-.store-grid .exercise-recent{background:#ffd7d7;border-color:#ca6868}
-.store-grid .exercise-warm{background:#fff0b3;border-color:#c5a449}
 
 .app main { padding-top: max(12px, env(safe-area-inset-top)); }
 .store-switch { margin-bottom: 8px; }
@@ -130,3 +128,5 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 .cloud-backup, .cloud-backup form, .cloud-backup fieldset { min-width: 0; }
 .cloud-backup button { max-width: 100%; white-space: normal; overflow-wrap: anywhere; margin-bottom: 8px; }
 .cloud-backup input, .cloud-backup select { min-width: 0; max-width: 100%; }
+.store-grid .exercise-recent{background:#ffd7d7;border-color:#ca6868}
+.store-grid .exercise-warm{background:#fff0b3;border-color:#c5a449}

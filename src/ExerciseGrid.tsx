@@ -13,7 +13,8 @@ export default function ExerciseGrid({exercises, workouts, select, allExercises 
   const [now, setNow] = useState(Date.now)
 
   const ranked = rankExercises(exercises, workouts, now)
-  const next = ranked.reduce((soonest, {time}) => {
+  const next = ranked.reduce((soonest, {time, cardio}) => {
+    if (cardio) return soonest
     for (const threshold of thresholds) {
       const boundary = time + threshold
       if (boundary > now) soonest = Math.min(soonest, boundary)

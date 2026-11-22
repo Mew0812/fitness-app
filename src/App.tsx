@@ -9,6 +9,7 @@ import ExerciseGuide from './ExerciseGuide'
 import BackupPanel from './BackupPanel'
 import CloudBackupPanel from './CloudBackupPanel'
 import {useCloudBackup} from './useCloudBackup'
+import {useEdgeSwipeBack} from './useEdgeSwipeBack'
 import WorkoutHistory from './WorkoutHistory'
 import StrengthForm from './StrengthForm'
 import {exerciseLabel, exerciseType} from './exerciseLabels'
@@ -91,7 +92,8 @@ export default function App() {
     const next = {...data, workouts}
     try { parseBackup(next) } catch { setMessage('種目・日付・数値を確認してください。'); return false }
     if (!(await commit(next))) return false
-    reset()
+    if (isCardio(record)) reset()
+    else setEditing('')
     return true
   }
   async function submitExercise(e: FormEvent) {
@@ -146,6 +148,12 @@ export default function App() {
     : isBodyweight(selectedExercise) ? latest.reps + '回'
       : `${latest.weight}kg × ${latest.reps}回 × ${latest.sets}セット`)
   const recordingScreen = tab === 'record' && Boolean(selectedExercise)
+  const settingsScreen = ['history','exercises','stores','backup'].includes(tab)
+  useEdgeSwipeBack(!busy && (recordingScreen || settingsScreen), () => {
+    if (recordingScreen) { reset(); setExerciseId('') }
+    else if (settingsScreen) { reset(); setExerciseId(''); setTab(store ? 'settings' : 'record') }
+    window.scrollTo({top:0,behavior:'instant'})
+  })
   const daily = data.workouts.filter(w => w.date === date)
   const dates = [...new Set(data.workouts.map(w => w.date))].sort().reverse()
   function dismissReminder() {
@@ -168,7 +176,6 @@ export default function App() {
       return true
     }}/></>
   if (!store && tab === 'backup') return <div className="app"><main>
-    <button type="button" onClick={() => setTab('record')}>店舗選択に戻る</button>
     <p role="status" className="status">{message}</p>
     <fieldset className="workspace" disabled={busy || !ready}>{backupPanel}</fieldset>
   </main></div>
@@ -219,13 +226,12 @@ export default function App() {
     {!recordingScreen && <p role="status" className="status">{tab === 'record' && !selectedExercise && message === '端末に保存しました。' ? '' : message}</p>}
     <fieldset disabled={!ready || busy} className="workspace">
     {tab === 'record' && !selectedExercise && <section>
-      <ExerciseGrid allExercises={data.exercises} exercises={exercises} workouts={data.workouts} select={id => {setExerciseId(id);setWeight('')}}/>
+      <ExerciseGrid allExercises={data.exercises} exercises={exercises} workouts={data.workouts} select={id => {reset();setExerciseId(id)}}/>
       {!exercises.length && <p>「店舗設定」で種目を登録してください。</p>}
     </section>}
     {((tab==='record' && selectedExercise)||tab==='history') && <>{tab === 'history' && <div className="section-head"><div><p className="eyebrow">YOUR HISTORY</p><h2>日付別の履歴</h2></div><label>日付<input aria-label="記録の日付" type="date" required value={date} onChange={e=>{setDate(e.target.value);if(!editing) reset()}}/></label></div>}
     {tab==='history' && <div className="date-list">{dates.map(d=><button key={d} onClick={()=>{setDate(d);reset()}} className={date===d?'selected':''}>{d}</button>)}</div>}
     {tab==='record' && selectedExercise && <>
-      <button onClick={() => { reset(); setExerciseId('') }}>種目選択に戻る</button>
       <div className="card workout-card">
       <h3>{editing ? '記録を編集' : exerciseLabel(selectedExercise,data.exercises)}</h3>
       <section className="workout-info" aria-label="保存済みの設定">
