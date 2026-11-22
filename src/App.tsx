@@ -94,13 +94,20 @@ export default function App() {
     await saveWorkout(record)
   }
   async function saveWorkout(record: Workout) {
+    if (isCardio(record) && selectedExercise) {
+      const previous = editing ? data.workouts.find(row=>row.id===editing) : data.workouts.find(row=>row.exerciseId===record.exerciseId && row.date===record.date)
+      if (previous && isCardio(previous)) {
+        const fields = selectedExercise.cardioFields ?? []
+        const hiddenMetrics = Object.fromEntries(Object.entries(previous.metrics).filter(([key])=>!fields.includes(key as CardioField)))
+        record = {...record, minutes:fields.length ? record.minutes ?? previous.minutes : record.minutes, metrics:{...hiddenMetrics,...record.metrics}}
+      }
+    }
     let next: Data
     try { next = saveDailyWorkout(data,record,editing) }
     catch (error) { setMessage(error instanceof Error ? error.message : '記録を更新できませんでした。'); return false }
     try { parseBackup(next) } catch { setMessage('種目・日付・数値を確認してください。'); return false }
     if (!(await commit(next))) return false
-    if (isCardio(record)) reset()
-    else setEditing('')
+    setEditing('')
     return true
   }
   async function submitExercise(e: FormEvent) {
@@ -247,7 +254,7 @@ export default function App() {
       </section>
       {recordingScreen && message && message !== '端末に保存しました。' && <p role="alert">{message}</p>}
       <p className="previous-workout">{previousSummary ? `前回の記録：${previousSummary}` : '前回の記録はありません'}</p>
-      {showCardio ? <CardioForm key={editing || selectedExercise.id} fields={selectedExercise.cardioFields ?? []} distanceOnly={treadmill} climbOnly={isClimbmill(selectedExercise)}
+      {showCardio ? <CardioForm key={selectedExercise.id} fields={selectedExercise.cardioFields ?? []}
         record={editedRecord && isCardio(editedRecord) ? editedRecord : undefined}
         save={(minutes,metrics)=>{
           const recordDate = editing || chosenDate !== null ? date : today()

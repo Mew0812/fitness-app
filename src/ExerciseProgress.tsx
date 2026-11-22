@@ -1,30 +1,30 @@
 import {workoutTime} from './workoutRecords'
 import { useState } from 'react'
-import { isCardio, isBodyweight, isTreadmill, isClimbmill, withRecordingMode } from './data'
-import type { Exercise, Workout } from './data'
+import { isCardio, isBodyweight, withRecordingMode, cardioFields } from './data'
+import type { Exercise, Workout, CardioField } from './data'
 
 const pageSize = 8
 const format = new Intl.NumberFormat('ja-JP', {maximumFractionDigits: 8})
 
 export default function ExerciseProgress({workouts, exercise}: {workouts: Workout[]; exercise: Exercise}) {
-  const [climbMetric, setClimbMetric] = useState<'floors' | 'steps'>('floors')
+  const [requestedMetric, setRequestedMetric] = useState<CardioField>()
   const [requestedPage, setPage] = useState<number | null>(null)
   const [selectedId, setSelectedId] = useState<string>()
-  const climb = isClimbmill(exercise)
-  const treadmill = isTreadmill(exercise)
   const bodyweight = isBodyweight(exercise)
   const cardio = withRecordingMode(exercise).recordingMode === 'cardio'
-  const unit = climb ? (climbMetric === 'floors' ? '階' : 'ステップ') : treadmill ? 'km' : cardio ? '分' : bodyweight ? '回' : 'ポイント'
-  const label = climb ? (climbMetric === 'floors' ? '登った階数' : 'ステップ数') : treadmill ? '走行距離' : cardio ? '運動時間' : bodyweight ? '回数' : 'トレーニング量'
+  const fields = cardioFields.filter(field=>cardio && exercise.cardioFields?.includes(field.key))
+  const metric = fields.find(field=>field.key===requestedMetric) ?? fields[0]
+  const unit = cardio ? metric?.unit ?? '分' : bodyweight ? '回' : 'ポイント'
+  const label = cardio ? metric?.label.replace(/ \([^)]*\)$/, '') ?? '運動時間' : bodyweight ? '回数' : 'トレーニング量'
 
   const attempts = workouts.filter(record => record.exerciseId === exercise.id)
     .sort((a, b) => workoutTime(a) - workoutTime(b))
     .map((record, index) => {
       const value = isCardio(record)
-        ? climb ? record.metrics[climbMetric] : treadmill ? record.metrics.distance : record.minutes
+        ? metric ? record.metrics[metric.key] : record.minutes
         : cardio ? undefined : bodyweight ? record.reps : record.weight * record.reps * record.sets
-      const detail = isCardio(record) && climb
-        ? ([['floors', '階'], ['steps', 'ステップ']] as const).flatMap(([key, metricUnit]) => {
+      const detail = isCardio(record) && fields.length>1
+        ? fields.flatMap(({key,unit:metricUnit}) => {
           const metric = record.metrics[key]
           return metric === undefined ? [] : [format.format(metric) + ' ' + metricUnit]
         }).join(' · ') || '未記録'
@@ -53,10 +53,10 @@ export default function ExerciseProgress({workouts, exercise}: {workouts: Workou
   return <section className="card growth-chart" aria-label="成長グラフ">
     <h3>成長グラフ</h3>
     {!attempts.length ? <p>まだ記録がありません</p> : <>
-      {climb && <label>表示する項目<select value={climbMetric} onChange={event => {
-        setClimbMetric(event.target.value === 'steps' ? 'steps' : 'floors')
+      {fields.length>1 && <label>表示する項目<select value={metric?.key} onChange={event => {
+        setRequestedMetric(event.target.value as CardioField)
         setSelectedId(undefined)
-      }}><option value="floors">登った階数</option><option value="steps">ステップ数</option></select></label>}
+      }}>{fields.map(field=><option key={field.key} value={field.key}>{field.label.replace(/ \([^)]*\)$/, '')}</option>)}</select></label>}
       <p>{label}（{unit}）</p>
       {points.every(point => point.y === undefined) && <p>この範囲に{label}の記録はありません。</p>}
       <div className="growth-layout">

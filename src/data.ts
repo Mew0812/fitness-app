@@ -263,7 +263,7 @@ export function parseBackup(value: unknown): Data {
     if (!isCardio(record)) return strength.get(record.id)!
     const {id,exerciseId,date,trainedAt,minutes,metrics} = record
     if (typeof id !== 'string' || !id || ids.has(id) || !exercises.some(row=>row.id===exerciseId) ||
-        !validDate(date) || (minutes === undefined ? !(Number(metrics?.distance)>0 || Number(metrics?.floors)>0 || Number(metrics?.steps)>0) : !Number.isFinite(minutes) || minutes <= 0) ||
+        !validDate(date) || (minutes === undefined ? !cardioFields.some(({key})=>Number(metrics?.[key])>0) : !Number.isFinite(minutes) || minutes <= 0) ||
         (trainedAt !== undefined && (!Number.isSafeInteger(trainedAt) || Math.abs(trainedAt)>8.64e15)) ||
         !metrics || typeof metrics !== 'object' || Array.isArray(metrics)) throw new Error('有酸素運動の記録が不正です。')
     for (const [key, metric] of Object.entries(metrics)) {
