@@ -13,7 +13,7 @@ import {useEdgeSwipeBack} from './useEdgeSwipeBack'
 import WorkoutHistory from './WorkoutHistory'
 import StrengthForm from './StrengthForm'
 import {exerciseLabel, exerciseType} from './exerciseLabels'
-import { workoutTime, workoutTimestamp, updateWorkout } from './workoutRecords'
+import { workoutTime, workoutTimestamp, updateWorkout, saveDailyWorkout } from './workoutRecords'
 import { CardioForm } from './CardioForm'
 import { cardioSummaryText } from './cardioSummary'
 import type { Data, Workout, StoreChoice, CardioField } from './data'
@@ -55,7 +55,8 @@ export default function App() {
     }
   }, [])
   const [tab, setTab] = useState('record')
-  const [date, setDate] = useState(today)
+  const [chosenDate, setDate] = useState<string | null>(null)
+  const date = chosenDate ?? today()
   const [name, setName] = useState('')
   const [exerciseSettings, setExerciseSettings] = useState('')
   const [editExercise, setEditExercise] = useState('')
@@ -83,13 +84,15 @@ export default function App() {
       setMessage('重量は0〜2000 kgで入力してください。')
       return
     }
-    const trainedAt = workoutTimestamp(previous, date, today(), currentTime())
-    const record: Workout = { id: editing || newId(), exerciseId, date, trainedAt, weight: enteredWeight, reps: Number(reps), sets: bodyweight ? (previous && !isCardio(previous) ? previous.sets : 1) : sets }
+    const recordDate = editing || chosenDate !== null ? date : today()
+    const trainedAt = workoutTimestamp(previous, recordDate, today(), currentTime())
+    const record: Workout = { id: editing || newId(), exerciseId, date:recordDate, trainedAt, weight: enteredWeight, reps: Number(reps), sets: bodyweight ? (previous && !isCardio(previous) ? previous.sets : 1) : sets }
     await saveWorkout(record)
   }
   async function saveWorkout(record: Workout) {
-    const workouts = editing ? data.workouts.map(w => w.id === editing ? record : w) : [...data.workouts, record]
-    const next = {...data, workouts}
+    let next: Data
+    try { next = saveDailyWorkout(data,record,editing) }
+    catch (error) { setMessage(error instanceof Error ? error.message : '記録を更新できませんでした。'); return false }
     try { parseBackup(next) } catch { setMessage('種目・日付・数値を確認してください。'); return false }
     if (!(await commit(next))) return false
     if (isCardio(record)) reset()
@@ -175,7 +178,7 @@ export default function App() {
       onRestored(next)
       return true
     }}/></>
-  if (!store && tab === 'backup') return <div className="app"><main>
+  if (!store && tab === 'backup') return <div className="app swipe-back-screen"><main>
     <p role="status" className="status">{message}</p>
     <fieldset className="workspace" disabled={busy || !ready}>{backupPanel}</fieldset>
   </main></div>
@@ -201,7 +204,7 @@ export default function App() {
         <button type="button" onClick={()=>setAddingStore(false)}>キャンセル</button>
       </form> : <button disabled={!ready || busy} onClick={()=>setAddingStore(true)}>＋ 新しい店舗を追加</button>}
     </div></main></div>
-  return <div className="app">
+  return <div className={'app' + (recordingScreen || settingsScreen ? ' swipe-back-screen' : '')}>
     <main>{!recordingScreen && reminder}
     {!recordingScreen && <>
       <div className="store-switch">
@@ -242,8 +245,11 @@ export default function App() {
       <p className="previous-workout">{previousSummary ? `前回の記録：${previousSummary}` : '前回の記録はありません'}</p>
       {showCardio ? <CardioForm key={editing || selectedExercise.id} fields={selectedExercise.cardioFields ?? []} distanceOnly={treadmill} climbOnly={isClimbmill(selectedExercise)}
         record={editedRecord && isCardio(editedRecord) ? editedRecord : undefined}
-        save={(minutes,metrics)=>saveWorkout({kind:'cardio',id:editing || newId(),exerciseId,date,
-          trainedAt:workoutTimestamp(editedRecord, date, today(), currentTime()),minutes,metrics})}
+        save={(minutes,metrics)=>{
+          const recordDate = editing || chosenDate !== null ? date : today()
+          return saveWorkout({kind:'cardio',id:editing || newId(),exerciseId,date:recordDate,
+            trainedAt:workoutTimestamp(editedRecord,recordDate,today(),currentTime()),minutes,metrics})
+        }}
         cancel={reset}/> : <StrengthForm submit={submit} editing={editing}
         exerciseId={exerciseId} setExerciseId={setExerciseId} exercises={data.exercises}
         bodyweight={bodyweight} weight={weight} setWeight={setWeight} reps={reps} setReps={setReps}
@@ -253,6 +259,7 @@ export default function App() {
     </>}
     <WorkoutHistory date={date} daily={daily} exercises={data.exercises}
       edit={record => {
+        setDate(record.date)
         setEditing(record.id); setExerciseId(record.exerciseId)
         if (!isCardio(record)) {
           setWeight(String(record.weight)); setReps(String(record.reps)); setSets(record.sets)

@@ -14,14 +14,14 @@ function start(target:Element,x=5,y=100) {fireEvent.touchStart(target,{touches:[
 function move(target:Element,x=110,y=105) {return fireEvent.touchMove(target,{touches:[touch(x,y)],cancelable:true})}
 function end(target:Element,x=110,y=105) {fireEvent.touchEnd(target,{touches:[],changedTouches:[touch(x,y)]})}
 afterEach(()=>{cleanup();vi.restoreAllMocks();vi.useRealTimers()})
-it('iPhone幅375pxで左端24px以内・80px以上の右スワイプだけを1回戻ると判定する',()=>{
+it('iPhone幅375pxで左端32px以内・80px以上の右スワイプだけを1回戻ると判定する',()=>{
   vi.spyOn(window,'innerWidth','get').mockReturnValue(375)
   const back=vi.fn();render(<Harness back={back}/>)
   const target=screen.getByTestId('edge')
   start(target);expect(move(target)).toBe(false);end(target);end(target)
   expect(back).toHaveBeenCalledTimes(1)
 })
-it.each([[25,100,200,105],[5,100,60,105],[5,100,100,160],[5,100,0,100]])('端以外・短距離・縦方向・逆方向の操作では戻らない (%s,%s→%s,%s)',(x,y,toX,toY)=>{
+it.each([[33,100,200,105],[5,100,60,105],[5,100,100,160],[5,100,0,100]])('端以外・短距離・縦方向・逆方向の操作では戻らない (%s,%s→%s,%s)',(x,y,toX,toY)=>{
   const back=vi.fn();render(<Harness back={back}/>)
   const target=screen.getByTestId('edge')
   start(target,x,y);move(target,toX,toY);end(target,toX,toY)
@@ -49,10 +49,23 @@ it('複数指・touchcancel・長いドラッグ・実際にページがスク�
   start(target)
   fireEvent.touchMove(target,{touches:[touch(100,100),touch(120,100,2)]})
   end(target)
-  start(target);move(target);fireEvent.touchCancel(target);end(target)
-  start(target);move(target);vi.advanceTimersByTime(1001);end(target)
+  start(target);move(target,30);fireEvent.touchCancel(target);end(target)
+  start(target);vi.advanceTimersByTime(2501);move(target);end(target)
   start(target);vi.spyOn(window,'scrollY','get').mockReturnValue(50);move(target);end(target)
   expect(back).not.toHaveBeenCalled()
+})
+it('途中の再描画や1秒を超える操作でも、touchendなしで規定距離に達したら最新の戻る処理を1回実行する',()=>{
+  vi.useFakeTimers();vi.setSystemTime(1000)
+  const first=vi.fn(),second=vi.fn(),view=render(<Harness back={first}/>)
+  const target=screen.getByTestId('edge')
+  start(target);move(target,25)
+  view.rerender(<Harness back={second}/>)
+  vi.advanceTimersByTime(1500)
+  move(target,110)
+  expect(first).not.toHaveBeenCalled()
+  expect(second).toHaveBeenCalledTimes(1)
+  end(target)
+  expect(second).toHaveBeenCalledTimes(1)
 })
 it('画像拡大ダイアログや保存中の画面では戻らず、解除後は再び操作できる',()=>{
   const back=vi.fn(),view=render(<Harness back={back} enabled={false}/>)

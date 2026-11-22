@@ -130,3 +130,6 @@ textarea{font:inherit;font-size:16px;display:block;width:100%;min-height:120px;r
 .cloud-backup input, .cloud-backup select { min-width: 0; max-width: 100%; }
 .store-grid .exercise-recent{background:#ffd7d7;border-color:#ca6868}
 .store-grid .exercise-warm{background:#fff0b3;border-color:#c5a449}
+
+/* Let Safari own vertical scrolling and pinch zoom; claim only edge-horizontal moves. */
+.swipe-back-screen { touch-action: pan-y pinch-zoom; }
