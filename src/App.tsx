@@ -10,6 +10,8 @@ import BackupPanel from './BackupPanel'
 import CloudBackupPanel from './CloudBackupPanel'
 import {useCloudBackup} from './useCloudBackup'
 import {useEdgeSwipeBack} from './useEdgeSwipeBack'
+import {useAppViewport,scrollAppToTop} from './appViewport'
+import {useScrollBoundaries} from './useScrollBoundaries'
 import WorkoutHistory from './WorkoutHistory'
 import StrengthForm from './StrengthForm'
 import {exerciseLabel, exerciseType} from './exerciseLabels'
@@ -21,6 +23,8 @@ import './App.css'
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}` }
 const currentTime = () => Date.now()
 export default function App() {
+  useAppViewport()
+  useScrollBoundaries()
   const [data, setData] = useState<Data>(emptyData)
   const [store, setStore] = useState<StoreChoice | null>(null)
   const [addingStore, setAddingStore] = useState(false)
@@ -155,7 +159,7 @@ export default function App() {
   useEdgeSwipeBack(!busy && (recordingScreen || settingsScreen), () => {
     if (recordingScreen) { reset(); setExerciseId('') }
     else if (settingsScreen) { reset(); setExerciseId(''); setTab(store ? 'settings' : 'record') }
-    window.scrollTo({top:0,behavior:'instant'})
+    scrollAppToTop()
   })
   const daily = data.workouts.filter(w => w.date === date)
   const dates = [...new Set(data.workouts.map(w => w.date))].sort().reverse()
@@ -233,7 +237,7 @@ export default function App() {
       {!exercises.length && <p>「店舗設定」で種目を登録してください。</p>}
     </section>}
     {((tab==='record' && selectedExercise)||tab==='history') && <>{tab === 'history' && <div className="section-head"><div><p className="eyebrow">YOUR HISTORY</p><h2>日付別の履歴</h2></div><label>日付<input aria-label="記録の日付" type="date" required value={date} onChange={e=>{setDate(e.target.value);if(!editing) reset()}}/></label></div>}
-    {tab==='history' && <div className="date-list">{dates.map(d=><button key={d} onClick={()=>{setDate(d);reset()}} className={date===d?'selected':''}>{d}</button>)}</div>}
+    {tab==='history' && <div className="date-list" data-no-swipe>{dates.map(d=><button key={d} onClick={()=>{setDate(d);reset()}} className={date===d?'selected':''}>{d}</button>)}</div>}
     {tab==='record' && selectedExercise && <>
       <div className="card workout-card">
       <h3>{editing ? '記録を編集' : exerciseLabel(selectedExercise,data.exercises)}</h3>
@@ -265,7 +269,7 @@ export default function App() {
           setWeight(String(record.weight)); setReps(String(record.reps)); setSets(record.sets)
         }
         setTab('record')
-        window.scrollTo({top:0, behavior:'smooth'})
+        scrollAppToTop('smooth')
       }}
       remove={async id => {
         if (confirm('この記録を削除しますか？') && await commit(updateWorkout(data, id))) reset()

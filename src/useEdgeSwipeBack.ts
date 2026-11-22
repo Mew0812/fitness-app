@@ -1,4 +1,5 @@
 import {useEffect, useLayoutEffect, useRef} from 'react'
+import {appScrollPosition} from './appViewport'
 
 const excluded='input,textarea,select,button,a,[contenteditable]:not([contenteditable="false"]),[draggable="true"],[role="slider"],[data-no-swipe],dialog'
 
@@ -16,13 +17,13 @@ export function useEdgeSwipeBack(enabled:boolean,back:()=>void) {
       if(!target || target.closest(excluded))return
       const touch=event.touches[0]
       if(touch.clientX<0 || touch.clientX>32)return
-      gesture={id:touch.identifier,x:touch.clientX,y:touch.clientY,started:Date.now(),horizontal:false,scrollY:window.scrollY}
+      gesture={id:touch.identifier,x:touch.clientX,y:touch.clientY,started:Date.now(),horizontal:false,scrollY:appScrollPosition()}
     }
     const finish=(x:number,y:number)=>{
       const current=gesture
       if(!current || !current.horizontal || document.querySelector('dialog[open]'))return
       const dx=x-current.x,dy=Math.abs(y-current.y)
-      if(Date.now()-current.started>2500 || Math.abs(window.scrollY-current.scrollY)>12){cancel();return}
+      if(Date.now()-current.started>2500 || Math.abs(appScrollPosition()-current.scrollY)>12){cancel();return}
       if(dx>=80 && dy<=50 && dx>dy*1.8){
         cancel() // Invoke once even if touchend follows or the UI rerenders.
         action.current()
@@ -30,7 +31,7 @@ export function useEdgeSwipeBack(enabled:boolean,back:()=>void) {
     }
     const move=(event:TouchEvent)=>{
       if(!gesture)return
-      if(event.touches.length!==1 || Math.abs(window.scrollY-gesture.scrollY)>12){cancel();return}
+      if(event.touches.length!==1 || Math.abs(appScrollPosition()-gesture.scrollY)>12){cancel();return}
       const touch=event.touches[0]
       if(touch.identifier!==gesture.id){cancel();return}
       const dx=touch.clientX-gesture.x,dy=Math.abs(touch.clientY-gesture.y)

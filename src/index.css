@@ -1,1 +1,25 @@
-/* Global styles are defined in App.css. */
+/* The document never scrolls; .app is the only page-level scroll container. */
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior-y: none;
+}
+body { position: fixed; inset: 0; margin: 0; }
+#root {
+  position: absolute;
+  top: var(--app-viewport-top, 0px);
+  width: 100%;
+  height: 100%;
+  height: 100dvh;
+  height: var(--app-viewport-height, 100dvh);
+  overflow: hidden;
+}
+.app {
+  height: 100%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  -webkit-overflow-scrolling: touch;
+}

@@ -67,6 +67,17 @@ it('途中の再描画や1秒を超える操作でも、touchendなしで規定�
   end(target)
   expect(second).toHaveBeenCalledTimes(1)
 })
+it('アプリ内の縦スクロールが始まったら戻らず、独立スクロール領域からの操作も奪わない',()=>{
+  const back=vi.fn()
+  const view=render(<div className="app"><Harness back={back}/><div data-no-swipe>日付一覧</div></div>)
+  const app=view.container.querySelector<HTMLElement>('.app')!
+  const target=screen.getByTestId('edge')
+  start(target);app.scrollTop=40;move(target);end(target)
+  expect(back).not.toHaveBeenCalled()
+  const dates=screen.getByText('日付一覧')
+  start(dates);expect(move(dates)).toBe(true);end(dates)
+  expect(back).not.toHaveBeenCalled()
+})
 it('画像拡大ダイアログや保存中の画面では戻らず、解除後は再び操作できる',()=>{
   const back=vi.fn(),view=render(<Harness back={back} enabled={false}/>)
   let target=screen.getByTestId('edge')
